@@ -4,5 +4,5 @@
 #1.The CUDA is not portable which only suported by nvidia device.
 #2.The performance of the cuda_Sift is different with the performance of CPU code which test on the
 #  dataset of https://github.com/jieeeeeeeeeee/Features_Repeatability
-#3.There are some bug on people'test which I gurss is reasion of the different device.
+#3.There are some bug on people'test which I gurss is the reason for the different device.
 #4.The license cause some problem.
