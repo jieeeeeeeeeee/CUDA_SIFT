@@ -1,0 +1,8 @@
+#sift_dector is suitable for parallel
+#I sew the discusion on openMVG'pull requests "https://github.com/openMVG/openMVG/pull/837",And it was refused by the master.
+#The main reasion is show below.
+#1.The CUDA is not portable which only suported by nvidia device.
+#2.The performance of the cuda_Sift is different with the performance of CPU code which test on the
+#  dataset of https://github.com/jieeeeeeeeeee/Features_Repeatability
+#3.There are some bug on people'test which I gurss is reasion of the different device.
+#4.The license cause some problem.
