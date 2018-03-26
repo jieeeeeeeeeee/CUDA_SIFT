@@ -11,12 +11,21 @@ find_package(Qt5Core)
 #find OpenCV
 set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build)
 
+#set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build1)
+
+
 find_package(OpenCV REQUIRED)
+
+
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 
+add_subdirectory(sift)
+
+SET(CMAKE_BUILD_TYPE "Debug")
 
 add_executable(${PROJECT_NAME} "main.cpp")
 
 target_link_libraries(${PROJECT_NAME} Qt5::Core)
 target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+target_link_libraries(${PROJECT_NAME} sift)
