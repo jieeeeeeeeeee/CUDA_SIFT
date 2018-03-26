@@ -9,9 +9,11 @@ set(CMAKE_AUTOMOC ON)
 find_package(Qt5Core)
 
 #find OpenCV
-set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build)
+#which is release version
+#set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build)
 
-#set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build1)
+#OpenCV Labrary which is debug version
+set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build1)
 
 
 find_package(OpenCV REQUIRED)
