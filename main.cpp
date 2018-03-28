@@ -1,14 +1,24 @@
 #include <iostream>
-#include"sift/sift.h"
-#include <opencv2/opencv.hpp>  //头文件
+#include "sift/sift.h"
+
+#include <opencv2/opencv.hpp>
 #include <opencv2/xfeatures2d.hpp>
 using namespace cv;  //包含cv命名空间
 using namespace std;
+
+#define TIME 0
 
 
 
 int main()
 {
+
+#if TIME
+    double t, tf = getTickFrequency();
+    t = (double)getTickCount();
+#endif
+
+
     //Create SIFT class pointer
     Ptr<Feature2D> f2d = xfeatures2d::q::SIFT::create();
     //读入图片
@@ -32,5 +42,12 @@ int main()
     cvNamedWindow("match",CV_WINDOW_NORMAL);
     imshow("match", img_matches);
     //等待任意按键按下
+
+
+#if TIME
+    t = (double)getTickCount() - t;
+    printf("time cost: %g\n", t*1000./tf);
+#endif
+
     waitKey(0);
 }

@@ -106,7 +106,9 @@
 #include <iostream>
 #include <stdarg.h>
 #include <opencv2/core/hal/hal.hpp>
-#include"sift.h"
+#include "sift.h"
+#include "cuda/cusitf_function.h"
+
 namespace cv
 {
 namespace xfeatures2d
@@ -219,8 +221,11 @@ unpackOctave(const KeyPoint& kpt, int& octave, int& layer, float& scale)
     scale = octave >= 0 ? 1.f/(1 << octave) : (float)(1 << -octave);
 }
 
+
 static Mat createInitialImage( const Mat& img, bool doubleImageSize, float sigma )
 {
+
+    //the convertTo change the type of the input image to float, img.type -> float(gray_fpt)
     Mat gray, gray_fpt;
     if( img.channels() == 3 || img.channels() == 4 )
     {
@@ -230,8 +235,10 @@ static Mat createInitialImage( const Mat& img, bool doubleImageSize, float sigma
     else
         img.convertTo(gray_fpt, DataType<sift_wt>::type, SIFT_FIXPT_SCALE, 0);
 
+    //sigma different which is sqrt(1.6*1.6-0.5*0.5)
     float sig_diff;
 
+    //double the size of the original image to build the zero octave
     if( doubleImageSize )
     {
         sig_diff = sqrtf( std::max(sigma * sigma - SIFT_INIT_SIGMA * SIFT_INIT_SIGMA * 4, 0.01f) );
@@ -239,6 +246,7 @@ static Mat createInitialImage( const Mat& img, bool doubleImageSize, float sigma
 #if DoG_TYPE_SHORT
         resize(gray_fpt, dbl, Size(gray_fpt.cols*2, gray_fpt.rows*2), 0, 0, INTER_LINEAR_EXACT);
 #else
+        //linera the img to gray_fpt
         resize(gray_fpt, dbl, Size(gray_fpt.cols*2, gray_fpt.rows*2), 0, 0, INTER_LINEAR);
 #endif
         GaussianBlur(dbl, dbl, Size(), sig_diff, sig_diff);
@@ -255,7 +263,9 @@ static Mat createInitialImage( const Mat& img, bool doubleImageSize, float sigma
 
 void SIFT_Impl::buildGaussianPyramid( const Mat& base, std::vector<Mat>& pyr, int nOctaves ) const
 {
+    //the vector of sigma per octave
     std::vector<double> sig(nOctaveLayers + 3);
+    //init the size of the pyramid images which is nOctave*nLayer
     pyr.resize(nOctaves*(nOctaveLayers + 3));
 
     // precompute Gaussian sigmas using the following formula:
@@ -1116,6 +1126,7 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
                       OutputArray _descriptors,
                       bool useProvidedKeypoints)
 {
+
     int firstOctave = -1, actualNOctaves = 0, actualNLayers = 0;
     Mat image = _image.getMat(), mask = _mask.getMat();
 
@@ -1125,6 +1136,7 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
     if( !mask.empty() && mask.type() != CV_8UC1 )
         CV_Error( Error::StsBadArg, "mask has incorrect type (!=CV_8UC1)" );
 
+    //no need
     if( useProvidedKeypoints )
     {
         firstOctave = 0;
@@ -1144,8 +1156,13 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
         actualNOctaves = maxOctave - firstOctave + 1;
     }
 
+    //create the zero(or -1) Octave image `base`
     Mat base = createInitialImage(image, firstOctave < 0, (float)sigma);
+
     std::vector<Mat> gpyr, dogpyr;
+
+    //the number of the Octaves which can calculate by formula "|log2 min(X,Y) - 2|"
+    //cvRound Rounds floating-point number to the nearest integer.
     int nOctaves = actualNOctaves > 0 ? actualNOctaves : cvRound(std::log( (double)std::min( base.cols, base.rows ) ) / std::log(2.) - 2) - firstOctave;
 
     //double t, tf = getTickFrequency();
