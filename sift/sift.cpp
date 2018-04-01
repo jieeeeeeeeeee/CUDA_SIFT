@@ -107,7 +107,7 @@
 #include <stdarg.h>
 #include <opencv2/core/hal/hal.hpp>
 #include "sift.h"
-#include "cuda/cusitf_function.h"
+
 
 namespace cv
 {
@@ -226,6 +226,7 @@ static Mat createInitialImage( const Mat& img, bool doubleImageSize, float sigma
 {
 
     //the convertTo change the type of the input image to float, img.type -> float(gray_fpt)
+    //The reason is change change the 0~255 to 0~1 for calculate,which uchar is different with the float(or int)
     Mat gray, gray_fpt;
     if( img.channels() == 3 || img.channels() == 4 )
     {

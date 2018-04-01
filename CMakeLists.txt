@@ -8,6 +8,7 @@ set(CMAKE_AUTOMOC ON)
 set(SRC main.cpp)
 set(EXTRA_SRC)
 
+find_package(CUDA)
 #find qt5
 find_package(Qt5Core)
 
@@ -21,24 +22,30 @@ set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build2)
 find_package(OpenCV REQUIRED)
 
 include_directories(${OpenCV_INCLUDE_DIRS})
-
+include_directories(${CUDA_INCLUDE_DIRS})
 
 add_subdirectory(sift)
 add_subdirectory(cuda)
 
 SET(CMAKE_BUILD_TYPE "Debug")
 #SET(CMAKE_CXX_FLAGS "-pg")
+set(LABRARY ${OpenCV_LIBS} "Qt5::Core"  "sift" "cusift")
 
 add_executable(${PROJECT_NAME} ${SRC})
 
-target_link_libraries(${PROJECT_NAME} Qt5::Core)
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
-target_link_libraries(${PROJECT_NAME} sift)
-target_link_libraries(${PROJECT_NAME} cusift)
 
-option (BUILD_TEST "build test" OFF)
+target_link_libraries(${PROJECT_NAME} ${LABRARY})
+#message(STATUS "This is src file:${LABRARY}")
+#target_link_libraries(${PROJECT_NAME} Qt5::Core)
+#target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+#target_link_libraries(${PROJECT_NAME} sift)
+#target_link_libraries(${PROJECT_NAME} cusift)
+
+option (BUILD_TEST "build test" ON)
 if (BUILD_TEST)
   set (EXTRA_SRC ${EXTRA_SRC} test_GaussianBlur.cpp)
-  #add_executable(test_GaussianBlur ${EXTRA_SRC})
+  #cuda_add_executable(test_GaussianBlur ${EXTRA_SRC})
+  add_executable(test_GaussianBlur ${EXTRA_SRC})
+  target_link_libraries(test_GaussianBlur ${LABRARY})
 endif (BUILD_TEST)
 
