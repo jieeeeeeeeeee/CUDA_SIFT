@@ -7,6 +7,7 @@
 
 #include "cuda/cuGlobal.h"
 #include "cuda/cuImage.h"
+#include "cuda/cudaImage.h"
 #include "cuda/cusitf_function_H.h"
 #include <opencv2/opencv.hpp>
 #include <opencv2/xfeatures2d.hpp>
@@ -45,25 +46,47 @@ int main()
     double t, tf = getTickFrequency();
     t = (double)getTickCount();
 #endif
-    GaussianBlur(src,dst,Size(0,0),1.6);
+    GaussianBlur(src,dst,Size(0,0),1.22);
 #if TIME
     t = (double)getTickCount() - t;
     printf("time cost: %g ms\n", t*1000./tf);
 #endif
 
-
-
+    ////////////////////////////////////////////////////
+    //// old cuImage
+    ///////////////////////////////////////////////////
 #if TIME
     t = (double)getTickCount();
 #endif
     cuImage cuimg;
     cuimg.AllocateMat1D(src);
-    cuGaussianBlur(cuimg,1.6);
+    cuGaussianBlur(cuimg,1.22);
+
+//    Mat dis(cuimg.height,cuimg.width,CV_32F);
+//    memcpy(dis.data,cuimg.h_data,cuimg.width*cuimg.height*sizeof(float));
+//    dis.convertTo(dst,DataType<uchar>::type, 1, 0);
 #if TIME
     t = (double)getTickCount() - t;
     printf("time cost: %g ms\n", t*1000./tf);
 #endif
 
+//    ////////////////////////////////////////////////////
+//    //// new cudaImage
+//    ///////////////////////////////////////////////////
+//    #if TIME
+//        t = (double)getTickCount();
+//    #endif
+//        CudaImage cuimg;
+//        cuimg.Allocate(w,h,iAlignUp(w, 128),false,NULL,(float*)src.data);
+//        cuGaussianBlur(cuimg,1.22);
+
+////        Mat dis(cuimg.height,cuimg.width,CV_32F);
+////        memcpy(dis.data,cuimg.h_data,cuimg.width*cuimg.height*sizeof(float));
+////        dis.convertTo(dst,DataType<uchar>::type, 1, 0);
+//    #if TIME
+//        t = (double)getTickCount() - t;
+//        printf("time cost: %g ms\n", t*1000./tf);
+//    #endif
 
 
     cvNamedWindow("GaussBlar",CV_WINDOW_NORMAL);

@@ -7,7 +7,7 @@
 
 #define __MAXSIZECON 100
 __constant__ float coeffGaussKernel[__MAXSIZECON];
-
+texture<float, 1, cudaReadModeElementType> texRef;
 
 __global__ void foo()
 {
@@ -26,7 +26,9 @@ __global__ void GaussianBlurKernelRow(float *d_data,float *out,int w,int h,int k
     int y = blockIdx.y*blockDim.y+threadIdx.y;
 
     int b = (ksize -1) /2;
+
     if(x>=b && x<w-b && y>=0 && y<h){
+        #pragma unroll
         for(int i = 0;i<ksize;i++){
             if(i<b){
                 out[y*w+x] += d_data[y*w+x-b+i]*coeffGaussKernel[i];
@@ -36,6 +38,7 @@ __global__ void GaussianBlurKernelRow(float *d_data,float *out,int w,int h,int k
             }
         }
     }
+
 }
 
 __global__ void GaussianBlurKernelCol(float *d_data,float *out,int w,int h,int ksize){
@@ -54,7 +57,9 @@ __global__ void GaussianBlurKernelCol(float *d_data,float *out,int w,int h,int k
 //    }
     //out[x*w+y] =d_data[x*w+y];
     int b = (ksize -1) /2;
+
     if(y>=b && y<h-b && x>=0 && x<w){
+        #pragma unroll
         for(int i = 0;i<ksize;i++){
             if(i<b){
                 out[y*w+x] += d_data[(y-b+i)*w+x]*coeffGaussKernel[i];
@@ -66,8 +71,38 @@ __global__ void GaussianBlurKernelCol(float *d_data,float *out,int w,int h,int k
     }
 }
 
+__global__ void GaussianBlurKernelColShare(float *d_data,float *out,int w,int h,int ksize)
+{
+    int b = (ksize -1) /2;
+    //__shared__ data[10+blockDim.x];
+
+//    if(y>=b && y<h-b && x>=0 && x<w){
 
 
+//    }
+
+}
+__global__ void GaussianBlurKernelRTex(float *out,int w,int h,int ksize)
+{
+
+    int x = blockIdx.x*blockDim.x+threadIdx.x;
+    int y = blockIdx.y*blockDim.y+threadIdx.y;
+
+    int b = (ksize -1) /2;
+
+    if(x>=b && x<w-b && y>=0 && y<h){
+        #pragma unroll
+        for(int i = 0;i<ksize;i++){
+            if(i<b){
+                out[y*w+x] += tex1Dfetch(texRef,y*w+x-b+i)*coeffGaussKernel[i];
+            }
+            else{
+                out[y*w+x] += tex1Dfetch(texRef,y*w+x+i-b)*coeffGaussKernel[i];
+            }
+        }
+    }
+
+}
 void useCUDA()
 {
 
@@ -75,6 +110,8 @@ void useCUDA()
     CHECK(cudaDeviceSynchronize());
 
 }
+
+
 
 void cuGaussianBlur(cuImage &cuImg,float sigma)
 {
@@ -110,11 +147,27 @@ void cuGaussianBlur(cuImage &cuImg,float sigma)
 
     safeCall(cudaMemcpy(cuImg.h_data,tmp_data1,cuImg.width*cuImg.height*sizeof(float),cudaMemcpyDeviceToHost));
 
+    cudaFree(tmp_data);
+    cudaFree(tmp_data1);
     disMatf(cuImg);
 
+      /*tex*/
+//    CHECK(cudaBindTexture(NULL,texRef,cuImg.d_data,cuImg.width*cuImg.height*sizeof(float)));
+//    dim3 Block(32,8);
+//    dim3 Grid(iDivUp(cuImg.width,Block.x),iDivUp(cuImg.height,Block.y));
+//    float *tmp_data,*tmp_data1;
+//    safeCall(cudaMalloc(&tmp_data,cuImg.width*cuImg.height*sizeof(float)));
+
+//    GaussianBlurKernelRTex<<<Grid,Block>>>(tmp_data,cuImg.width,cuImg.height,kernelSize);
+
+//    safeCall(cudaDeviceSynchronize());
+//    safeCall(cudaMemcpy(cuImg.h_data,tmp_data,cuImg.width*cuImg.height*sizeof(float),cudaMemcpyDeviceToHost));
+
+//    disMatf(cuImg);
+    /*tex*/
 
 
-#if MESSAGE == 1
+#if MESSAGE == 0
     std::cout<<kernelSize<<std::endl;
     for(int i= 0 ;i<kx.rows;i++)
         for(int j = 0;j<kx.cols;j++){
@@ -138,6 +191,7 @@ void disMatf(cuImage &cuImg){
         }
         //std::cout<<std::endl;
     }
+    //memcpy(dis.data,cuImg.h_data,cuImg.width*cuImg.height*sizeof(float));
     Mat gray;
     dis.convertTo(gray,DataType<uchar>::type, 1, 0);
 

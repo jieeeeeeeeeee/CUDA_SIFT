@@ -19,6 +19,7 @@ message(STATUS "This is src file:${CUDA_INCLUDE_DIRS}")
 
 
 
+
 cuda_add_library(cusift SHARED ${CURRENT_HEADERS} ${CURRENT_SOURCES})
 #target_link_libraries(cusift ${CUDA_LIBRARIES})
 
