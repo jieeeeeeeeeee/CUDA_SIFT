@@ -3,6 +3,7 @@
 
 #include "cuImage.h"
 #include "cuGlobal.h"
+#include "cudaImage.h"
 //#include "cusitf_function_D.h"
 
 using namespace cv;
@@ -11,7 +12,7 @@ using namespace cv;
 
 cv::Mat cv::getGaussianKernel( int n, double sigma, int ktype );
 
-void disMatf(cuImage &cuImg);
+void disMatf(CudaImage &cuImg);
 
 
 
@@ -21,7 +22,7 @@ void useCUDA();
 
 
 extern "C"
-void cuGaussianBlur(cuImage& cuImg,float sigma);
+void cuGaussianBlur(CudaImage& cuImg,float sigma);
 
 
 #endif
