@@ -21,7 +21,7 @@ int main()
 {
     //useCUDA();
     Mat src;
-    src = imread("../data/100_7106.JPG",0);
+    src = imread("../data/road.png",0);
     //src = imread("../data/DSC04034.JPG",0);
     //tmp.convertTo(src, CV_32FC1);
 
