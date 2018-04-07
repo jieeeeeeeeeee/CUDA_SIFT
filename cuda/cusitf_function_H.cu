@@ -5,7 +5,7 @@
 
 
 
-#define __MAXSIZECON 100
+#define __MAXSIZECON 200
 __constant__ float coeffGaussKernel[__MAXSIZECON];
 texture<float, 1, cudaReadModeElementType> texRef;
 
@@ -16,7 +16,7 @@ texture<float, 1, cudaReadModeElementType> texRef;
     const int BLOCK_DIM_X = 32;
     const int BLOCK_DIM_Y = 8;
 #define UNROLL_STEPS 2
-#define HALO_STEP 1
+#define HALO_STEP 2
 
 #else
     const int BLOCK_DIM_X = 32;
@@ -34,8 +34,8 @@ __global__ void GaussianBlurKernelRow(float *d_data,float *out,int w,int h,int k
     int baseX = (blockIdx.x*UNROLL_STEPS-HALO_STEP)*blockDim.x + threadIdx.x;
     int baseY = blockIdx.y*blockDim.y+threadIdx.y;
 
-    if(baseX + (UNROLL_STEPS+HALO_STEP*2)*BLOCK_DIM_X>w)
-        return;
+//    if(baseX + (UNROLL_STEPS+HALO_STEP)*BLOCK_DIM_X>w)
+//        return;
 
     //the data basing shared memory coordinate
     d_data += baseY * pitch + baseX;
@@ -44,7 +44,8 @@ __global__ void GaussianBlurKernelRow(float *d_data,float *out,int w,int h,int k
     //Load main data
 #pragma unroll
     for(int i = HALO_STEP;i<UNROLL_STEPS+HALO_STEP;i++)
-        s[threadIdx.y][threadIdx.x+ i * BLOCK_DIM_X] = d_data[BLOCK_DIM_X * i];
+        //s[threadIdx.y][threadIdx.x+ i * BLOCK_DIM_X] = d_data[BLOCK_DIM_X * i];
+        s[threadIdx.y][threadIdx.x+ i * BLOCK_DIM_X] = (w <= baseY * pitch + baseX + BLOCK_DIM_X * i) ? d_data[BLOCK_DIM_X * i]:0;
 
 
     //Load left halo
