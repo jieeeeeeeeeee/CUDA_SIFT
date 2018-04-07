@@ -27,7 +27,7 @@ include_directories(${CUDA_INCLUDE_DIRS})
 add_subdirectory(sift)
 add_subdirectory(cuda)
 
-SET(CMAKE_BUILD_TYPE "Debug")
+#SET(CMAKE_BUILD_TYPE "Debug")
 #SET(CMAKE_CXX_FLAGS "-pg")
 set(LABRARY ${OpenCV_LIBS} "Qt5::Core"  "sift" "cusift")
 

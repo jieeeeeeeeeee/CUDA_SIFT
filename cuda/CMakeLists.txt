@@ -3,7 +3,7 @@ project(cusift)
 
 find_package(CUDA)
 
-set(CUDA_NVCC_FLAGS -arch=compute_60;-G;-g)
+set(CUDA_NVCC_FLAGS -arch=compute_60)
 
 file(GLOB_RECURSE CURRENT_HEADERS  *.h *.hpp *.cuh)
 file(GLOB CURRENT_SOURCES  *.cpp *.cu)
@@ -12,10 +12,10 @@ file(GLOB CURRENT_SOURCES  *.cpp *.cu)
 source_group("Include" FILES ${CURRENT_HEADERS})
 source_group("Source" FILES ${CURRENT_SOURCES})
 
-SET(CMAKE_BUILD_TYPE "Debug")
+#SET(CMAKE_BUILD_TYPE "Debug")
 
 
-message(STATUS "This is src file:${CUDA_INCLUDE_DIRS}")
+message(STATUS "This is src file:${OpenCV_LIBS}")
 
 
 

@@ -41,20 +41,22 @@ int main()
     {
         printf("no photo");
     }
+    Mat tmp;
+    src.convertTo(tmp, CV_32FC1);
 
 #if TIME
     double t, tf = getTickFrequency();
     t = (double)getTickCount();
 #endif
-    GaussianBlur(src,dst,Size(0,0),1.22);
+    GaussianBlur(src,dst,Size(0,0),2);
 #if TIME
     t = (double)getTickCount() - t;
     printf("time cost: %g ms\n", t*1000./tf);
 #endif
 
-    ////////////////////////////////////////////////////
-    //// old cuImage
-    ///////////////////////////////////////////////////
+////////////////////////////////////////////////////
+//// old cuImage
+///////////////////////////////////////////////////
 //#if TIME
 //    t = (double)getTickCount();
 //#endif
@@ -70,26 +72,25 @@ int main()
 //    printf("time cost: %g ms\n", t*1000./tf);
 //#endif
 
-    ////////////////////////////////////////////////////
-    //// new cudaImage
-    ///////////////////////////////////////////////////
-    #if TIME
-        t = (double)getTickCount();
-    #endif
-        Mat tmp;
-        src.convertTo(tmp, CV_32FC1);
-        CudaImage cuimg;
-        cuimg.Allocate(width,height,iAlignUp(width, 128),false,NULL,(float*)tmp.data);
-        cuimg.Download();
-        cuGaussianBlur(cuimg,1.22);
+////////////////////////////////////////////////////
+//// new cudaImage
+///////////////////////////////////////////////////
+#if TIME
+    t = (double)getTickCount();
+#endif
+
+    CudaImage cuimg;
+    cuimg.Allocate(width,height,iAlignUp(width, 128),false,NULL,(float*)tmp.data);
+    cuimg.Download();
+    cuGaussianBlur(cuimg,2);
 
 //        Mat dis(cuimg.height,cuimg.width,CV_32F);
 //        memcpy(dis.data,cuimg.h_data,cuimg.width*cuimg.height*sizeof(float));
 //        dis.convertTo(dst,DataType<uchar>::type, 1, 0);
-    #if TIME
-        t = (double)getTickCount() - t;
-        printf("time cost: %g ms\n", t*1000./tf);
-    #endif
+#if TIME
+    t = (double)getTickCount() - t;
+    printf("time cost: %g ms\n", t*1000./tf);
+#endif
 
 
     cvNamedWindow("GaussBlar",CV_WINDOW_NORMAL);
