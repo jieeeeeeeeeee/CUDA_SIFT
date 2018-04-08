@@ -21,8 +21,10 @@ int main()
 {
     //useCUDA();
     Mat src;
-    src = imread("../data/road.png",0);
-    //src = imread("../data/DSC04034.JPG",0);
+    //src = imread("../data/road.png",0);
+    src = imread("../data/DSC04034.JPG",0);
+    //src = imread("../data/100_7101.JPG",0);
+    //src = imread("../data/lena.png",0);
     //tmp.convertTo(src, CV_32FC1);
 
 //    Mat ss;
@@ -34,6 +36,7 @@ int main()
 //            std::cout<<h_data[i*src.rows+j]<<std::endl;
 //        }
 
+    int sigma = 10;
 
     Mat dst;
     int width = src.cols;
@@ -49,7 +52,7 @@ int main()
     double t, tf = getTickFrequency();
     t = (double)getTickCount();
 #endif
-    GaussianBlur(src,dst,Size(0,0),2);
+    GaussianBlur(src,dst,Size(0,0),sigma);
 #if TIME
     t = (double)getTickCount() - t;
     printf("time cost: %g ms\n", t*1000./tf);
@@ -83,7 +86,7 @@ int main()
     CudaImage cuimg;
     cuimg.Allocate(width,height,iAlignUp(width, 128),false,NULL,(float*)tmp.data);
     cuimg.Download();
-    cuGaussianBlur(cuimg,2);
+    cuGaussianBlur(cuimg,sigma);
 
 //        Mat dis(cuimg.height,cuimg.width,CV_32F);
 //        memcpy(dis.data,cuimg.h_data,cuimg.width*cuimg.height*sizeof(float));

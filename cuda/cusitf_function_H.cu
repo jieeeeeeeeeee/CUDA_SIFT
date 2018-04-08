@@ -4,55 +4,52 @@
 #define MESSAGE 1
 
 
-#define __MAXSIZECON 200
+#define __MAXSIZECON 64*2+1
 __constant__ float coeffGaussKernel[__MAXSIZECON];
 texture<float, 1, cudaReadModeElementType> texRef;
 
+/***********
+//This is an adjustable option which control the gaussKernel size. \
+//when the kernel size less than 32*2+1 or kernel radius less than 32,the ROW_HALO_STEP set 1 \
+//and the COLUMNS_HALO_STEPS set 2 will has a good performance.But when the kernel size is more \
+//than 32 less than 64, the ROW_HALO_STEP should set 2 and the COLUMNS_HALO_STEPS should set 4
+//The ROW_HALO_STEP will set 2 and the COLUMNS_HALO_STEPS will set 4 by default
+***********/
 
-#define __CUDA_ARCH__ 600
+///////////////////////
+/// \brief GaussianBlurKernelRow
+/// \param d_data
+/// \param out
+/// \param w
+/// \param h
+/// \param ksize
+/// \param pitch
+/// Only support the kernel size less than 32*2+1(ROW_HALO_STEP*ROW_BLOCK_DIM_X(32) is the radius)
+/// Reference the cuda-sample 'convolutionSeparable'.
+/// The boundary is set 0.
+/// If adjust the ROW_HALO_STEP 2,that is ok.
+//////////////////////
 
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 200)
-   // const int BLOCK_DIM_X = 32;
+#define   ROW_BLOCK_DIM_X 32
+#define   ROW_BLOCK_DIM_Y 8
+#define  ROW_UNROLL_STEPS 4
+#define     ROW_HALO_STEP 2
 
-//for row
-#define   BLOCK_DIM_X 32
-#define   BLOCK_DIM_Y 8
-//    const int BLOCK_DIM_Y = 8;
-#define UNROLL_STEPS 2
-#define HALO_STEP 1
+__global__ void GaussianBlurKernelRow(
+    float *d_data,
+    float *out,
+    int w,
+    int h,
+    int ksize,
+    int pitch
+)
+{
 
-//for col
-#define   COLUMNS_BLOCKDIM_X 32
-#define   COLUMNS_BLOCKDIM_Y 8
-#define COLUMNS_RESULT_STEPS 2
-#define   COLUMNS_HALO_STEPS 1
-
-
-#else
-    const int BLOCK_DIM_X = 32;
-    const int BLOCK_DIM_Y = 4;
-#define UNROLL_STEPS 2
-#define HALO_STEP 1
-
-#define   COLUMNS_BLOCKDIM_X 32
-#define   COLUMNS_BLOCKDIM_Y 8
-#define COLUMNS_RESULT_STEPS 1
-#define   COLUMNS_HALO_STEPS 1
-
-
-#endif
-
-
-__global__ void GaussianBlurKernelRow(float *d_data,float *out,int w,int h,int ksize,int pitch){
-
-    __shared__ float s[BLOCK_DIM_Y][BLOCK_DIM_X*(UNROLL_STEPS+HALO_STEP*2)];
+    __shared__ float s[ROW_BLOCK_DIM_Y][ROW_BLOCK_DIM_X*(ROW_UNROLL_STEPS+ROW_HALO_STEP*2)];
 
     //base shared memory coordinate
-    int baseX = (blockIdx.x*UNROLL_STEPS-HALO_STEP)*blockDim.x + threadIdx.x;
+    int baseX = (blockIdx.x*ROW_UNROLL_STEPS-ROW_HALO_STEP)*blockDim.x + threadIdx.x;
     int baseY = blockIdx.y*blockDim.y+threadIdx.y;
-
-//    if(baseX + (UNROLL_STEPS+HALO_STEP)*BLOCK_DIM_X>w)
-//        return;
 
     //the data basing shared memory coordinate
     d_data += baseY * pitch + baseX;
@@ -60,59 +57,46 @@ __global__ void GaussianBlurKernelRow(float *d_data,float *out,int w,int h,int k
 
     //Load main data
 #pragma unroll
-    for(int i = HALO_STEP;i<UNROLL_STEPS+HALO_STEP;i++)
-        //s[threadIdx.y][threadIdx.x+ i * BLOCK_DIM_X] = d_data[BLOCK_DIM_X * i];
-        s[threadIdx.y][threadIdx.x+ i * BLOCK_DIM_X] = (w <= baseY * pitch + baseX + BLOCK_DIM_X * i) ? d_data[BLOCK_DIM_X * i]:0;
+    for(int i = ROW_HALO_STEP;i<ROW_UNROLL_STEPS+ROW_HALO_STEP;i++)
+        //s[threadIdx.y][threadIdx.x+ i * ROW_BLOCK_DIM_X] = d_data[ROW_BLOCK_DIM_X * i];
+        s[threadIdx.y][threadIdx.x+ i * ROW_BLOCK_DIM_X] = (baseX + ROW_BLOCK_DIM_X * i < w ) ? d_data[ROW_BLOCK_DIM_X * i] : 0;
 
 
     //Load left halo
+    //left halo exist when this is threads in the imgae patch.
 #pragma unroll
-    for (int i = 0; i < HALO_STEP; i++)
+    for (int i = 0; i < ROW_HALO_STEP; i++)
     {
-        s[threadIdx.y][threadIdx.x + i * BLOCK_DIM_X] = (baseX >= -i * BLOCK_DIM_X) ? d_data[i * BLOCK_DIM_X] : 0;
+        s[threadIdx.y][threadIdx.x + i * ROW_BLOCK_DIM_X] = (baseX >= -i * ROW_BLOCK_DIM_X ) ? d_data[i * ROW_BLOCK_DIM_X] : 0;
     }
 
 
     //Load right halo
+    //left halo exist when this is threads in the imgae patch.
 #pragma unroll
-    for (int i = HALO_STEP + UNROLL_STEPS; i < HALO_STEP + UNROLL_STEPS + HALO_STEP; i++)
+    for (int i = ROW_HALO_STEP + ROW_UNROLL_STEPS; i < ROW_HALO_STEP + ROW_UNROLL_STEPS + ROW_HALO_STEP; i++)
     {
-        s[threadIdx.y][threadIdx.x + i * BLOCK_DIM_X] = (w - baseX > i * BLOCK_DIM_X) ? d_data[i * BLOCK_DIM_X] : 0;
+        s[threadIdx.y][threadIdx.x + i * ROW_BLOCK_DIM_X] = (w - baseX > i * ROW_BLOCK_DIM_X) ? d_data[i * ROW_BLOCK_DIM_X] : 0;
     }
 
     __syncthreads();
 
 
     int b = (ksize -1) /2;
-    for (int i = HALO_STEP; i < HALO_STEP + UNROLL_STEPS; i++)
+    for (int i = ROW_HALO_STEP; i < ROW_HALO_STEP + ROW_UNROLL_STEPS; i++)
     {
         float sum = 0;
 
 #pragma unroll
         for (int j = -b; j <= b; j++)
         {
-            sum += coeffGaussKernel[b-j] * s[threadIdx.y][threadIdx.x + i * BLOCK_DIM_X + j];
+            sum += coeffGaussKernel[b-j] * s[threadIdx.y][threadIdx.x + i * ROW_BLOCK_DIM_X + j];
         }
 
-        out[i * BLOCK_DIM_X] = sum;
+        out[i * ROW_BLOCK_DIM_X] = sum;
     }
 
-
-
-#if 0 //not reduce the performance while has the 'if',because the branch influence the threads in a warp not in a thread
-    int b = (ksize -1) /2;
-    if(x>=b && x<w-b && y>=0 && y<h){
-        #pragma unroll
-        for(int i = 0;i<ksize;i++){
-            if(i<b){
-                out[y*pitch+x] += d_data[y*pitch+x-b+i]*coeffGaussKernel[i];
-            }
-            else{
-                out[y*pitch+x] += d_data[y*pitch+x+i-b]*coeffGaussKernel[i];
-            }
-        }
-    }
-#else
+    //old version
 //     int b = (ksize -1) /2;
 //     if(x>=b && x<w-b && y>=0 && y<h){
 //        #pragma unroll
@@ -122,78 +106,36 @@ __global__ void GaussianBlurKernelRow(float *d_data,float *out,int w,int h,int k
 //        }
 //        out[y*pitch+x] = sum;
 //     }
-#endif
 }
-//__global__ void GaussianBlurKernelRow(float *d_data,float *out,int w,int h,int ksize,int pitch){
+///////////////////////////////////
+/// \brief GaussianBlurKernelCol
+/// \param d_data
+/// \param out
+/// \param w
+/// \param h
+/// \param ksize
+/// \param pitch
+/// There is a different with row that the col has not the pitch which could make sure the \
+/// all thereds in image aera.
+/// Reference the cuda-sample 'convolutionSeparable'
+/// The boundary is set 0.
+/// The minimum y size is 64(COLUMNS_BLOCKDIM_Y*COLUMNS_RESULT_STEPS)
+//////////////////////////////////
 
-//    int x = blockIdx.x*blockDim.x+threadIdx.x;
-//    int y = blockIdx.y*blockDim.y+threadIdx.y;
+#define   COLUMNS_BLOCKDIM_X 32
+#define   COLUMNS_BLOCKDIM_Y 16
+#define COLUMNS_RESULT_STEPS 4
+#define   COLUMNS_HALO_STEPS 4
 
-//#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 200)
-//    const int BLOCK_DIM_X = 32;
-//    const int BLOCK_DIM_Y = 8;
-//#else
-//    const int BLOCK_DIM_X = 32;
-//    const int BLOCK_DIM_Y = 4;
-//    const int PATCH_PER_BLOCK = 4;
-//    const int HALO_SIZE = 1;
-//#endif
-//    __shared__ float s[BLOCK_DIM_Y][BLOCK_DIM_X+HALO*2];
-
-
-//    if(blockIdx.x > 0 && blockIdx.x < w/blockDim.x-1 ){
-//        //main data
-//        //for(int i = 0;i<BLOCK_DIM_Y;i++)
-//        s[threadIdx.y][HALO+threadIdx.x] = d_data[y*pitch+x];
-
-//        //Load left halo
-//        if(threadIdx.x == 0)
-//            #pragma unroll
-//            for(int i = 0;i<HALO;i++)
-//                s[threadIdx.y][threadIdx.x+i] = d_data[y*pitch+x-HALO+i];
-//        //Load right halo
-//        if(threadIdx.x == BLOCK_DIM_X - 1)
-//            #pragma unroll
-//            for(int i = 1;i<=HALO;i++)
-//                s[threadIdx.y][threadIdx.x+HALO+i] = d_data[y*pitch+x+i];
-//        __syncthreads();
-
-
-//        int b = (ksize -1) /2;
-//        #pragma unroll
-//        for(int i = -b;i<=b;i++){
-//            out[y*pitch+x] += s[threadIdx.y][threadIdx.x+HALO+i]*coeffGaussKernel[i+b];
-//        }
-
-//    }
-
-
-//#if 0 //not reduce the performance while has the 'if',because the branch influence the threads in a warp not in a thread
-//    int b = (ksize -1) /2;
-//    if(x>=b && x<w-b && y>=0 && y<h){
-//        #pragma unroll
-//        for(int i = 0;i<ksize;i++){
-//            if(i<b){
-//                out[y*pitch+x] += d_data[y*pitch+x-b+i]*coeffGaussKernel[i];
-//            }
-//            else{
-//                out[y*pitch+x] += d_data[y*pitch+x+i-b]*coeffGaussKernel[i];
-//            }
-//        }
-//    }
-//#else
-////     int b = (ksize -1) /2;
-////     if(x>=b && x<w-b && y>=0 && y<h){
-////        #pragma unroll
-////        for(int i = -b;i<=b;i++){
-////            out[y*pitch+x] += d_data[y*pitch+x+i]*coeffGaussKernel[i+b];
-////        }
-////     }
-//#endif
-//}
-
-
-__global__ void GaussianBlurKernelCol(float *d_data,float *out,int w,int h,int ksize,int pitch){
+__global__ void GaussianBlurKernelCol(
+    float *d_data,
+    float *out,
+    int w,
+    int h,
+    int ksize,
+    int pitch
+)
+{
 
     __shared__ float s_Data[COLUMNS_BLOCKDIM_X][(COLUMNS_RESULT_STEPS + 2 * COLUMNS_HALO_STEPS) * COLUMNS_BLOCKDIM_Y + 1];
 
@@ -202,9 +144,48 @@ __global__ void GaussianBlurKernelCol(float *d_data,float *out,int w,int h,int k
     const int baseY = (blockIdx.y * COLUMNS_RESULT_STEPS - COLUMNS_HALO_STEPS) * COLUMNS_BLOCKDIM_Y + threadIdx.y;
     d_data += baseY * pitch + baseX;
     out    += baseY * pitch + baseX;
+    int b = (ksize -1) /2;
 
-//    if(baseY + (COLUMNS_RESULT_STEPS)*COLUMNS_BLOCKDIM_Y>h)
-//        return;
+    //fill the shared memory not consider the upper halo,so it limit the minimum y size is 64(COLUMNS_BLOCKDIM_Y*COLUMNS_RESULT_STEPS)
+    if(baseY + (COLUMNS_RESULT_STEPS+COLUMNS_HALO_STEPS)*COLUMNS_BLOCKDIM_Y >= h && baseY + COLUMNS_HALO_STEPS*COLUMNS_BLOCKDIM_Y < h)
+    {
+
+
+        //Main data and lower halo
+#pragma unroll
+        for (int i = COLUMNS_HALO_STEPS; i <  COLUMNS_RESULT_STEPS + COLUMNS_HALO_STEPS*2 ; i++)
+        {
+            s_Data[threadIdx.x][threadIdx.y + i * COLUMNS_BLOCKDIM_Y] = (baseY + i * COLUMNS_BLOCKDIM_Y < h) ? d_data[i * COLUMNS_BLOCKDIM_Y * pitch] : 0;
+        }
+
+        //Upper halo
+#pragma unroll
+
+        for (int i = 0; i < COLUMNS_HALO_STEPS; i++)
+        {
+            s_Data[threadIdx.x][threadIdx.y + i * COLUMNS_BLOCKDIM_Y] = (baseY >= -i * COLUMNS_BLOCKDIM_Y) ? d_data[i * COLUMNS_BLOCKDIM_Y * pitch] : 0;
+        }
+
+
+        for (int i = COLUMNS_HALO_STEPS; i < COLUMNS_HALO_STEPS + COLUMNS_RESULT_STEPS; i++)
+        {
+            float sum = 0;
+#pragma unroll
+
+            for (int j = -b ; j <= b; j++)
+            {
+                sum += coeffGaussKernel[b - j]* s_Data[threadIdx.x][threadIdx.y + i * COLUMNS_BLOCKDIM_Y + j];
+            }
+
+            if(baseY + i * COLUMNS_BLOCKDIM_Y < h) {
+                out[i * COLUMNS_BLOCKDIM_Y * pitch] = sum;
+            }
+        }
+
+        return;
+    }
+
+
 
     //Main data
 #pragma unroll
@@ -233,7 +214,7 @@ __global__ void GaussianBlurKernelCol(float *d_data,float *out,int w,int h,int k
     //Compute and store results
     __syncthreads();
 
-    int b = (ksize -1) /2;
+
 #pragma unroll
 
     for (int i = COLUMNS_HALO_STEPS; i < COLUMNS_HALO_STEPS + COLUMNS_RESULT_STEPS; i++)
@@ -243,7 +224,7 @@ __global__ void GaussianBlurKernelCol(float *d_data,float *out,int w,int h,int k
 
         for (int j = -b ; j <= b; j++)
         {
-            sum += coeffGaussKernel[b - j] * s_Data[threadIdx.x][threadIdx.y + i * COLUMNS_BLOCKDIM_Y + j];
+            sum += coeffGaussKernel[b - j]* s_Data[threadIdx.x][threadIdx.y + i * COLUMNS_BLOCKDIM_Y + j];
         }
 
         out[i * COLUMNS_BLOCKDIM_Y * pitch] = sum;
@@ -273,57 +254,7 @@ __global__ void GaussianBlurKernelCol(float *d_data,float *out,int w,int h,int k
 #endif
 
 }
-//__global__ void GaussianBlurKernelCol(float *d_data,float *out,int w,int h,int ksize,int pitch){
 
-//    int x = blockIdx.x*blockDim.x+threadIdx.x;
-//    int y = blockIdx.y*blockDim.y+threadIdx.y;
-////    if(x == 511)
-////    {
-////        #pragma unroll
-////        for(int i =0;i<ksize;i++)
-////            printf(" %d :  %f  \n",i,coeffGaussKernel[i]);
-////    }
-////    if(x<4&&y<4)
-////    {
-////        printf("d_data : %f ",d_data[x*w+y]);
-////    }
-//    //out[x*w+y] =d_data[x*w+y];
-//    int b = (ksize -1) /2;
-//#if 0
-//    if(y>=b && y<h-b && x>=0 && x<w){
-//        #pragma unroll
-//        for(int i = 0;i<ksize;i++){
-//            if(i<b){
-//                out[y*pitch+x] += d_data[(y-b+i)*pitch+x]*coeffGaussKernel[i];
-//            }
-//            else{
-//                out[y*pitch+x] += d_data[(y+i-b)*pitch+x]*coeffGaussKernel[i];
-//            }
-//        }
-//    }
-//#else
-//    if(y>=b && y<h-b && x>=0 && x<w){
-//       #pragma unroll
-//       float sum = 0;
-//       for(int i = -b;i<=b;i++){
-//           sum += d_data[(y+i)*pitch+x]*coeffGaussKernel[i+b];
-//       }
-//       out[y*pitch+x] = sum;
-//    }
-//#endif
-
-//}
-__global__ void GaussianBlurKernelColShare(float *d_data,float *out,int w,int h,int ksize)
-{
-    int b = (ksize -1) /2;
-    //__shared__ data[10+blockDim.x];
-
-//    if(y>=b && y<h-b && x>=0 && x<w){
-
-
-//    }
-
-}
 __global__ void GaussianBlurKernelRTex(float *out,int w,int h,int ksize)
 {
 
@@ -347,77 +278,6 @@ __global__ void GaussianBlurKernelRTex(float *out,int w,int h,int ksize)
 }
 
 
-
-
-
-
-//void cuGaussianBlur(cuImage &cuImg,float sigma)
-//{
-//    //ksize.width = cvRound(sigma*(depth == CV_8U ? 3 : 4)*2 + 1)|1;
-//    //createsize
-//    //getkernel
-//    assert(sigma>0);
-//    int kernelSize = 0;
-
-//    //sigma = sqrtf(sigma * sigma - 0.5 * 0.5 * 4);
-
-//    kernelSize = cvRound(sigma*4*2 + 1)|1;
-
-//    Mat kx;
-//    kx = getGaussianKernel(kernelSize,sigma,CV_32F);
-////    for(int i = 0;i<kx.cols;i++)
-////        coeffGaussKernel[i] = ((float*)kx.data)[i];
-
-//    CHECK(cudaMemcpyToSymbol(coeffGaussKernel,(float*)kx.data,sizeof(float)*kernelSize));
-
-//    dim3 Block(32,8);
-//    dim3 Grid(iDivUp(cuImg.width,Block.x),iDivUp(cuImg.height,Block.y));
-//    float *tmp_data,*tmp_data1;
-
-//    safeCall(cudaMalloc(&tmp_data,cuImg.width*cuImg.height*sizeof(float)));
-//    GaussianBlurKernelRow<<<Grid,Block>>>(cuImg.d_data,tmp_data,cuImg.width,cuImg.height,kernelSize);
-//    safeCall(cudaDeviceSynchronize());
-
-
-//    safeCall(cudaMalloc(&tmp_data1,cuImg.width*cuImg.height*sizeof(float)));
-//    GaussianBlurKernelCol<<<Grid,Block>>>(tmp_data,tmp_data1,cuImg.width,cuImg.height,kernelSize);
-//    safeCall(cudaDeviceSynchronize());
-
-//    safeCall(cudaMemcpy(cuImg.h_data,tmp_data1,cuImg.width*cuImg.height*sizeof(float),cudaMemcpyDeviceToHost));
-
-//    cudaFree(tmp_data);
-//    cudaFree(tmp_data1);
-//    disMatf(cuImg);
-
-//      /*tex*/
-////    CHECK(cudaBindTexture(NULL,texRef,cuImg.d_data,cuImg.width*cuImg.height*sizeof(float)));
-////    dim3 Block(32,8);
-////    dim3 Grid(iDivUp(cuImg.width,Block.x),iDivUp(cuImg.height,Block.y));
-////    float *tmp_data,*tmp_data1;
-////    safeCall(cudaMalloc(&tmp_data,cuImg.width*cuImg.height*sizeof(float)));
-
-////    GaussianBlurKernelRTex<<<Grid,Block>>>(tmp_data,cuImg.width,cuImg.height,kernelSize);
-
-////    safeCall(cudaDeviceSynchronize());
-////    safeCall(cudaMemcpy(cuImg.h_data,tmp_data,cuImg.width*cuImg.height*sizeof(float),cudaMemcpyDeviceToHost));
-
-////    disMatf(cuImg);
-//    /*tex*/
-
-
-//#if MESSAGE == 0
-//    std::cout<<kernelSize<<std::endl;
-//    for(int i= 0 ;i<kx.rows;i++)
-//        for(int j = 0;j<kx.cols;j++){
-//            std::cout<<kx.at<float>(i,j)<<std::endl;
-//        }
-//#endif
-
-
-//    //size = cvRound(sigma*(sizeof(T) == CV_8U ? 3 : 4)*2 + 1)|1;
-
-//}
-
 void cuGaussianBlur(CudaImage &cuImg,float sigma)
 {
     //ksize.width = cvRound(sigma*(depth == CV_8U ? 3 : 4)*2 + 1)|1;
@@ -437,8 +297,8 @@ void cuGaussianBlur(CudaImage &cuImg,float sigma)
 
     CHECK(cudaMemcpyToSymbol(coeffGaussKernel,(float*)kx.data,sizeof(float)*kernelSize));
 
-    dim3 Block(BLOCK_DIM_X,BLOCK_DIM_Y);
-    dim3 Grid(iDivUp(cuImg.pitch,Block.x*UNROLL_STEPS),iDivUp(cuImg.height,Block.y));
+    dim3 BlockRow(ROW_BLOCK_DIM_X,ROW_BLOCK_DIM_Y);
+    dim3 GridRow(iDivUp(cuImg.pitch,BlockRow.x*ROW_UNROLL_STEPS),iDivUp(cuImg.height,BlockRow.y));
 
     float *tmp_data,*tmp_data1;
 
@@ -446,13 +306,13 @@ void cuGaussianBlur(CudaImage &cuImg,float sigma)
     // safeCall(cudaMalloc(&tmp_data,cuImg.width*cuImg.height*sizeof(float)));
     safeCall(cudaMallocPitch((void**)&tmp_data, (size_t*) &pitch, (size_t) cuImg.width*sizeof(float),  (size_t) cuImg.height));
 
-    GaussianBlurKernelRow<<<Grid,Block>>>(cuImg.d_data,tmp_data,cuImg.width,cuImg.height,kernelSize,cuImg.pitch);
+    GaussianBlurKernelRow<<<GridRow,BlockRow>>>(cuImg.d_data,tmp_data,cuImg.width,cuImg.height,kernelSize,cuImg.pitch);
     safeCall(cudaDeviceSynchronize());
 
     safeCall(cudaMallocPitch((void**)&tmp_data1, (size_t*) &pitch, (size_t) cuImg.width*sizeof(float),  (size_t) cuImg.height));
 
     dim3 BlockCol(COLUMNS_BLOCKDIM_X,COLUMNS_BLOCKDIM_Y);
-    dim3 GridCol(iDivUp(cuImg.pitch,Block.x),iDivUp(cuImg.height,Block.y*COLUMNS_RESULT_STEPS));
+    dim3 GridCol(iDivUp(cuImg.pitch,BlockCol.x),iDivUp(cuImg.height,BlockCol.y*COLUMNS_RESULT_STEPS));
 
 
     //safeCall(cudaMalloc(&tmp_data1,cuImg.width*cuImg.height*sizeof(float)));

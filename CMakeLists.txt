@@ -17,8 +17,8 @@ find_package(Qt5Core)
 #set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build)
 
 #OpenCV Labrary which is debug version
-set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build2)
-
+#set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build2)
+set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build3)
 find_package(OpenCV REQUIRED)
 
 include_directories(${OpenCV_INCLUDE_DIRS})
