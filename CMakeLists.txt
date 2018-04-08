@@ -6,7 +6,9 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC ON)
 
 set(SRC main.cpp)
-set(EXTRA_SRC)
+set(EXTRA_SRC
+test_GaussianBlur.cpp
+)
 
 find_package(CUDA)
 #find qt5
@@ -43,7 +45,7 @@ target_link_libraries(${PROJECT_NAME} ${LABRARY})
 
 option (BUILD_TEST "build test" ON)
 if (BUILD_TEST)
-  set (EXTRA_SRC ${EXTRA_SRC} test_GaussianBlur.cpp)
+  set (EXTRA_SRC ${EXTRA_SRC} )
   #cuda_add_executable(test_GaussianBlur ${EXTRA_SRC})
   add_executable(test_GaussianBlur ${EXTRA_SRC})
   target_link_libraries(test_GaussianBlur ${LABRARY})

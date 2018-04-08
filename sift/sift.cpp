@@ -108,6 +108,8 @@
 #include <opencv2/core/hal/hal.hpp>
 #include "sift.h"
 
+#define USE_MY_FUNCTIONS
+
 
 namespace cv
 {
@@ -250,7 +252,12 @@ static Mat createInitialImage( const Mat& img, bool doubleImageSize, float sigma
         //linera the img to gray_fpt
         resize(gray_fpt, dbl, Size(gray_fpt.cols*2, gray_fpt.rows*2), 0, 0, INTER_LINEAR);
 #endif
+
+#ifdef  USE_MY_FsUNCTIONS
+
+#else
         GaussianBlur(dbl, dbl, Size(), sig_diff, sig_diff);
+#endif
         return dbl;
     }
     else

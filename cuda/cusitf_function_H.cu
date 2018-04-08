@@ -26,7 +26,8 @@ texture<float, 1, cudaReadModeElementType> texRef;
 /// \param pitch
 /// Only support the kernel size less than 32*2+1(ROW_HALO_STEP*ROW_BLOCK_DIM_X(32) is the radius)
 /// Reference the cuda-sample 'convolutionSeparable'.
-/// The boundary is set 0.
+/// The boundary is set 0 which is different from OpenCV.The reason I simplify the boundary is \
+/// that the description of the sift need not the boundary of the image which will be filter out.
 /// If adjust the ROW_HALO_STEP 2,that is ok.
 //////////////////////
 
@@ -58,7 +59,6 @@ __global__ void GaussianBlurKernelRow(
     //Load main data
 #pragma unroll
     for(int i = ROW_HALO_STEP;i<ROW_UNROLL_STEPS+ROW_HALO_STEP;i++)
-        //s[threadIdx.y][threadIdx.x+ i * ROW_BLOCK_DIM_X] = d_data[ROW_BLOCK_DIM_X * i];
         s[threadIdx.y][threadIdx.x+ i * ROW_BLOCK_DIM_X] = (baseX + ROW_BLOCK_DIM_X * i < w ) ? d_data[ROW_BLOCK_DIM_X * i] : 0;
 
 
@@ -118,7 +118,8 @@ __global__ void GaussianBlurKernelRow(
 /// There is a different with row that the col has not the pitch which could make sure the \
 /// all thereds in image aera.
 /// Reference the cuda-sample 'convolutionSeparable'
-/// The boundary is set 0.
+/// The boundary is set 0 which is different from OpenCV.The reason I simplify the boundary is \
+/// that the description of the sift need not the boundary of the image which will be filter out.
 /// The minimum y size is 64(COLUMNS_BLOCKDIM_Y*COLUMNS_RESULT_STEPS)
 //////////////////////////////////
 
@@ -166,7 +167,7 @@ __global__ void GaussianBlurKernelCol(
             s_Data[threadIdx.x][threadIdx.y + i * COLUMNS_BLOCKDIM_Y] = (baseY >= -i * COLUMNS_BLOCKDIM_Y) ? d_data[i * COLUMNS_BLOCKDIM_Y * pitch] : 0;
         }
 
-
+        __syncthreads();
         for (int i = COLUMNS_HALO_STEPS; i < COLUMNS_HALO_STEPS + COLUMNS_RESULT_STEPS; i++)
         {
             float sum = 0;
@@ -184,7 +185,6 @@ __global__ void GaussianBlurKernelCol(
 
         return;
     }
-
 
 
     //Main data
@@ -280,17 +280,14 @@ __global__ void GaussianBlurKernelRTex(float *out,int w,int h,int ksize)
 
 void cuGaussianBlur(CudaImage &cuImg,float sigma)
 {
-    //ksize.width = cvRound(sigma*(depth == CV_8U ? 3 : 4)*2 + 1)|1;
-    //createsize
-    //getkernel
 
     assert(sigma>0);
-    assert(1);
     int kernelSize = 0;
-
     //sigma = sqrtf(sigma * sigma - 0.5 * 0.5 * 4);
 
+    //ksize.width = cvRound(sigma*(depth == CV_8U ? 3 : 4)*2 + 1)|1;
     kernelSize = cvRound(sigma*4*2 + 1)|1;
+    assert( kernelSize < 64*2+1 );
 
     Mat kx;
     kx = getGaussianKernel(kernelSize,sigma,CV_32F);
@@ -303,7 +300,6 @@ void cuGaussianBlur(CudaImage &cuImg,float sigma)
     float *tmp_data,*tmp_data1;
 
     size_t pitch;
-    // safeCall(cudaMalloc(&tmp_data,cuImg.width*cuImg.height*sizeof(float)));
     safeCall(cudaMallocPitch((void**)&tmp_data, (size_t*) &pitch, (size_t) cuImg.width*sizeof(float),  (size_t) cuImg.height));
 
     GaussianBlurKernelRow<<<GridRow,BlockRow>>>(cuImg.d_data,tmp_data,cuImg.width,cuImg.height,kernelSize,cuImg.pitch);
@@ -314,38 +310,18 @@ void cuGaussianBlur(CudaImage &cuImg,float sigma)
     dim3 BlockCol(COLUMNS_BLOCKDIM_X,COLUMNS_BLOCKDIM_Y);
     dim3 GridCol(iDivUp(cuImg.pitch,BlockCol.x),iDivUp(cuImg.height,BlockCol.y*COLUMNS_RESULT_STEPS));
 
-
-    //safeCall(cudaMalloc(&tmp_data1,cuImg.width*cuImg.height*sizeof(float)));
     GaussianBlurKernelCol<<<GridCol,BlockCol>>>(tmp_data,tmp_data1,cuImg.width,cuImg.height,kernelSize,cuImg.pitch);
     safeCall(cudaDeviceSynchronize());
 
     /*device data has not copy to host yet*/
+    safeCall(cudaMemcpy2D(cuImg.d_data,cuImg.pitch*sizeof(float),tmp_data1,cuImg.pitch*sizeof(float),cuImg.width*sizeof(float),(size_t) cuImg.height,cudaMemcpyDeviceToDevice));
 
 
-
-#if 1
+#if 0
     Mat dis(cuImg.height,cuImg.width,CV_32F);
-    //safeCall(cudaMemcpy(dis.data,tmp_data1,cuImg.width*cuImg.height*sizeof(float),cudaMemcpyDeviceToHost));
     safeCall(cudaMemcpy2D(dis.data,cuImg.width*sizeof(float),tmp_data1,cuImg.pitch*sizeof(float),cuImg.width*sizeof(float),(size_t) cuImg.height,cudaMemcpyDeviceToHost));
-
-//    Mat dis(cuImg.height,cuImg.pitch,CV_32F);
-//    //safeCall(cudaMemcpy(dis.data,tmp_data1,cuImg.width*cuImg.height*sizeof(float),cudaMemcpyDeviceToHost));
-//    safeCall(cudaMemcpy2D(dis.data,cuImg.pitch*sizeof(float),tmp_data1,cuImg.pitch*sizeof(float),cuImg.width*sizeof(float),(size_t) cuImg.height,cudaMemcpyDeviceToHost));
-
-
-    //    for(int i = 0;i<dis.rows;i++)
-//    {
-//        float *p = dis.ptr<float>(i);
-//        for(int j = 0;j<dis.cols;j++){
-//            p[j] = cuImg.h_data[i*dis.cols+j];
-//            //std::cout<<p[j]<<" ";
-//        }
-//        //std::cout<<std::endl;
-//    }
-//    memcpy(dis.data,tmp_data1,cuImg.width*cuImg.height*sizeof(float));
     Mat gray;
     dis.convertTo(gray,DataType<uchar>::type, 1, 0);
-
     cvNamedWindow("ss",CV_WINDOW_NORMAL);
     imshow("ss",gray);
     waitKey();
@@ -369,7 +345,7 @@ void cuGaussianBlur(CudaImage &cuImg,float sigma)
 
 
 
-
+/*disable*/
 void disMatf(CudaImage &cuImg){
     Mat dis(cuImg.height,cuImg.width,CV_32F);
 

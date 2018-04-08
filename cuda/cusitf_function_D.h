@@ -4,11 +4,6 @@
 #include"cuGlobal.h"
 
 
-__global__ void foo();
-
-__global__ void kernel(int size);
-
-
 
 
 #endif

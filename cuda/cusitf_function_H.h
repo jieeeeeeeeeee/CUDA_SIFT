@@ -12,12 +12,8 @@ using namespace cv;
 
 cv::Mat cv::getGaussianKernel( int n, double sigma, int ktype );
 
-void disMatf(CudaImage &cuImg);
 
-
-
-extern "C"
-void useCUDA();
+//void disMatf(CudaImage &cuImg);
 
 
 
