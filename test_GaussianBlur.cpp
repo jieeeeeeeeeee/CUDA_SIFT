@@ -12,7 +12,6 @@
 #include <opencv2/cudafilters.hpp>
 #include <cuda.h>
 
-
 using namespace cv;  //包含cv命名空间
 using namespace std;
 
