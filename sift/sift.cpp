@@ -109,7 +109,10 @@
 #include "sift.h"
 
 #define USE_MY_FUNCTIONS
-
+#ifdef USE_MY_FUNCTIONS
+#include "../cuda/cudaImage.h"
+#include "../cuda/cusitf_function_H.h"
+#endif
 
 namespace cv
 {
@@ -253,8 +256,17 @@ static Mat createInitialImage( const Mat& img, bool doubleImageSize, float sigma
         resize(gray_fpt, dbl, Size(gray_fpt.cols*2, gray_fpt.rows*2), 0, 0, INTER_LINEAR);
 #endif
 
-#ifdef  USE_MY_FsUNCTIONS
-
+#ifdef  USE_MY_FUNCTIONS
+        CudaImage cuimg;
+        cuimg.Allocate(dbl.cols,dbl.rows,iAlignUp(dbl.cols, 128),false,NULL,(float*)dbl.data);
+        cuimg.Download();
+        cuGaussianBlur(cuimg,sig_diff);
+        safeCall(cudaMemcpy2D(dbl.data,cuimg.width*sizeof(float),cuimg.d_data,cuimg.pitch*sizeof(float),cuimg.width*sizeof(float),(size_t) cuimg.height,cudaMemcpyDeviceToHost));
+//        Mat gray;
+//        dbl.convertTo(gray,DataType<uchar>::type, 1, 0);
+//        cvNamedWindow("ss",CV_WINDOW_NORMAL);
+//        imshow("ss",gray);
+//        waitKey(0);
 #else
         GaussianBlur(dbl, dbl, Size(), sig_diff, sig_diff);
 #endif
@@ -263,7 +275,22 @@ static Mat createInitialImage( const Mat& img, bool doubleImageSize, float sigma
     else
     {
         sig_diff = sqrtf( std::max(sigma * sigma - SIFT_INIT_SIGMA * SIFT_INIT_SIGMA, 0.01f) );
+
+#ifdef  USE_MY_FUNCTIONS
+        CudaImage cuimg;
+        cuimg.Allocate(gray_fpt.cols,gray_fpt.rows,iAlignUp(gray_fpt.cols, 128),false,NULL,(float*)gray_fpt.data);
+        cuimg.Download();
+        cuGaussianBlur(cuimg,sig_diff);
+        safeCall(cudaMemcpy2D(gray_fpt.data,cuimg.width*sizeof(float),cuimg.d_data,cuimg.pitch*sizeof(float),cuimg.width*sizeof(float),(size_t) cuimg.height,cudaMemcpyDeviceToHost));
+//        Mat gray;
+//        gray_fpt.convertTo(gray,DataType<uchar>::type, 1, 0);
+//        cvNamedWindow("ss",CV_WINDOW_NORMAL);
+//        imshow("ss",gray);
+//        waitKey(0);
+#else
         GaussianBlur(gray_fpt, gray_fpt, Size(), sig_diff, sig_diff);
+#endif
+
         return gray_fpt;
     }
 }
@@ -304,7 +331,22 @@ void SIFT_Impl::buildGaussianPyramid( const Mat& base, std::vector<Mat>& pyr, in
             else
             {
                 const Mat& src = pyr[o*(nOctaveLayers + 3) + i-1];
+
+#ifdef  USE_MY_FUNCTIONS
+                CudaImage cuimg;
+                cuimg.Allocate(src.cols,src.rows,iAlignUp(src.cols, 128),false,NULL,(float*)src.data);
+                cuimg.Download();
+                cuGaussianBlur(cuimg,sig[i]);
+                dst.create(src.size(),src.type());
+                safeCall(cudaMemcpy2D(dst.data,cuimg.width*sizeof(float),cuimg.d_data,cuimg.pitch*sizeof(float),cuimg.width*sizeof(float),(size_t) cuimg.height,cudaMemcpyDeviceToHost));
+        //        Mat gray;
+        //        gray_fpt.convertTo(gray,DataType<uchar>::type, 1, 0);
+        //        cvNamedWindow("ss",CV_WINDOW_NORMAL);
+        //        imshow("ss",gray);
+        //        waitKey(0);
+#else
                 GaussianBlur(src, dst, Size(), sig[i], sig[i]);
+#endif
             }
         }
     }

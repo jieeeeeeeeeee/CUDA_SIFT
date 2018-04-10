@@ -18,9 +18,9 @@ find_package(Qt5Core)
 #which is release version
 #set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build)
 
-#OpenCV Labrary which is debug version
-#set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build2)
-set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build3)
+#OpenCV Labrary which is debug version build2
+set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build1)
+#set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build3)
 find_package(OpenCV REQUIRED)
 
 include_directories(${OpenCV_INCLUDE_DIRS})
@@ -47,7 +47,11 @@ option (BUILD_TEST "build test" ON)
 if (BUILD_TEST)
   set (EXTRA_SRC ${EXTRA_SRC} )
   #cuda_add_executable(test_GaussianBlur ${EXTRA_SRC})
+
   add_executable(test_GaussianBlur ${EXTRA_SRC})
   target_link_libraries(test_GaussianBlur ${LABRARY})
+
+  add_executable(test_MySIFT test_MySIFT.cpp)
+  target_link_libraries(test_MySIFT ${LABRARY})
 endif (BUILD_TEST)
 
