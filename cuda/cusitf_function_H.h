@@ -20,5 +20,12 @@ cv::Mat cv::getGaussianKernel( int n, double sigma, int ktype );
 extern "C"
 void cuGaussianBlur(CudaImage& cuImg,float sigma);
 
+extern "C"
+void buildPyramidNoStream(const CudaImage& base, std::vector<CudaImage>& pyr, int nOctaves ,int nOctaveLayers );
+
+extern "C"
+void computePerOctave(CudaImage& base,std::vector<double> & sig,int nOctaveLayers);
+
+
 
 #endif

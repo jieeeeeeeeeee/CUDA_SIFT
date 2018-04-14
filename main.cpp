@@ -52,22 +52,3 @@ int main()
     waitKey(0);
 }
 
-//#include "opencv2/core.hpp"
-//#include "opencv2/cudaarithm.hpp"
-//#include "opencv2/cudafilters.hpp"
-
-//int main()
-//{
-//    Mat src;
-//    src = imread("../data/100_7106.JPG",0);
-
-//    cv::Ptr<cv::cuda::Filter> gauss = cv::cuda::createGaussianFilter(src.type(), CV_32F, Size(0,0), 2.5, 2.5, cv::BORDER_DEFAULT);
-
-//    cv::cuda::GpuMat dst ;
-//    dst.create(src.size(), CV_32F);
-//    gauss->apply(src, dst);
-
-
-
-//    return 0;
-//}

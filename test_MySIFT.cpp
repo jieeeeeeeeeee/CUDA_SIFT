@@ -82,12 +82,19 @@ using namespace cv::xfeatures2d;
 void readme();
 /* @function main */
 
+#define TIME
 
 
 int main( int argc, char** argv )
 {
-    Mat img_object = imread("/home/jie/workspace/data/Features_Repeatability/vgg_oxford_feat_eval/bark/img1.ppm", IMREAD_GRAYSCALE );
-    Mat img_scene  = imread("/home/jie/workspace/data/Features_Repeatability/vgg_oxford_feat_eval/bark/img2.ppm", IMREAD_GRAYSCALE );
+#ifdef TIME
+    double t, tf = getTickFrequency();
+    t = (double)getTickCount();
+#endif
+
+
+    Mat img_object = imread("/home/jie/workspace/projects/CUDA_SIfT/Qt_cuda_sift/data/100_7100.JPG", IMREAD_GRAYSCALE );
+    Mat img_scene  = imread("/home/jie/workspace/projects/CUDA_SIfT/Qt_cuda_sift/data/100_7101.JPG", IMREAD_GRAYSCALE );
     if( !img_object.data || !img_scene.data )
     { std::cout<< " --(!) Error reading images " << std::endl; return -1; }
     //////////////////////
@@ -130,6 +137,14 @@ int main( int argc, char** argv )
     f2d->compute(img_object, keypoints_object, descriptors_object);
     f2d->compute(img_scene, keypoints_scene, descriptors_scene);
 #endif
+
+#ifdef TIME
+    t = (double)getTickCount() - t;
+    printf("time cost: %g\n", t*1000./tf);
+#endif
+
+
+
     //-- Step 2: Matching descriptor vectors using FLANN matcher
     FlannBasedMatcher matcher;
     std::vector< DMatch > matches;

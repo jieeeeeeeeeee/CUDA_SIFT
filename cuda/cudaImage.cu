@@ -109,3 +109,14 @@ double CudaImage::CopyToTexture(CudaImage &dst, bool host)
 #endif
   return gpuTime;
 }
+
+//new operator
+void CudaImage::copyDevice(CudaImage &src){
+    width = src.width;
+    height = src.height;
+    pitch = src.pitch;
+    safeCall(cudaMallocPitch((void **)&d_data, (size_t*)&pitch, (size_t)(sizeof(float)*width), (size_t)height));
+    pitch /= sizeof(float);
+    safeCall(cudaMemcpy2D(d_data, sizeof(float)*pitch, src.d_data, sizeof(float)*src.pitch, sizeof(float)*width, height, cudaMemcpyDeviceToDevice));
+    d_internalAlloc = true;
+}

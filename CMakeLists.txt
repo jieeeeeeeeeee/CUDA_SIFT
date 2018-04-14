@@ -35,7 +35,6 @@ set(LABRARY ${OpenCV_LIBS} "Qt5::Core"  "sift" "cusift")
 
 add_executable(${PROJECT_NAME} ${SRC})
 
-
 target_link_libraries(${PROJECT_NAME} ${LABRARY})
 #message(STATUS "This is src file:${LABRARY}")
 #target_link_libraries(${PROJECT_NAME} Qt5::Core)
@@ -53,5 +52,9 @@ if (BUILD_TEST)
 
   add_executable(test_MySIFT test_MySIFT.cpp)
   target_link_libraries(test_MySIFT ${LABRARY})
+
+  add_executable(cuda_main cuda_main.cpp)
+  target_link_libraries(cuda_main ${LABRARY})
+
 endif (BUILD_TEST)
 

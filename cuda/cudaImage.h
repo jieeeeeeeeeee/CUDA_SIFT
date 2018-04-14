@@ -22,6 +22,7 @@ public:
   double Readback();
   double InitTexture();
   double CopyToTexture(CudaImage &dst, bool host);
+  void copyDevice(CudaImage &src);
 };
 
 

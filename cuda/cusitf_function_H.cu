@@ -4,7 +4,7 @@
 #define MESSAGE 1
 
 
-#define __MAXSIZECON 64*2+1
+#define __MAXSIZECON 32*2+1
 __constant__ float coeffGaussKernel[__MAXSIZECON];
 texture<float, 1, cudaReadModeElementType> texRef;
 
@@ -13,7 +13,7 @@ texture<float, 1, cudaReadModeElementType> texRef;
 //when the kernel size less than 32*2+1 or kernel radius less than 32,the ROW_HALO_STEP set 1 \
 //and the COLUMNS_HALO_STEPS set 2 will has a good performance.But when the kernel size is more \
 //than 32 less than 64, the ROW_HALO_STEP should set 2 and the COLUMNS_HALO_STEPS should set 4
-//The ROW_HALO_STEP will set 2 and the COLUMNS_HALO_STEPS will set 4 by default
+//The ROW_HALO_STEP will set 1 and the COLUMNS_HALO_STEPS will set 2 by default
 ***********/
 
 ///////////////////////
@@ -34,7 +34,7 @@ texture<float, 1, cudaReadModeElementType> texRef;
 #define   ROW_BLOCK_DIM_X 32
 #define   ROW_BLOCK_DIM_Y 8
 #define  ROW_UNROLL_STEPS 4
-#define     ROW_HALO_STEP 2
+#define     ROW_HALO_STEP 1
 
 __global__ void GaussianBlurKernelRow(
     float *d_data,
@@ -126,7 +126,7 @@ __global__ void GaussianBlurKernelRow(
 #define   COLUMNS_BLOCKDIM_X 32
 #define   COLUMNS_BLOCKDIM_Y 16
 #define COLUMNS_RESULT_STEPS 4
-#define   COLUMNS_HALO_STEPS 4
+#define   COLUMNS_HALO_STEPS 2
 
 __global__ void GaussianBlurKernelCol(
     float *d_data,
@@ -276,8 +276,19 @@ __global__ void GaussianBlurKernelRTex(float *out,int w,int h,int ksize)
     }
 
 }
+__global__ void differenceImg(float *d_Octave0,float *d_Octave1,float *d_diffOctave,int pitch,int height){
+
+    int x = blockIdx.x*blockDim.x+threadIdx.x;
+    int y = blockIdx.y*blockDim.y+threadIdx.y;
+
+    int index = y * pitch + x;
+    if(y<height)
+        d_diffOctave[index] = (d_Octave1[index] - d_Octave0[index])*50;
 
 
+}
+
+//input cudaImage and output cudaImage which d_data has been smooth
 void cuGaussianBlur(CudaImage &cuImg,float sigma)
 {
 
@@ -285,9 +296,10 @@ void cuGaussianBlur(CudaImage &cuImg,float sigma)
     int kernelSize = 0;
     //sigma = sqrtf(sigma * sigma - 0.5 * 0.5 * 4);
 
+    //why the
     //ksize.width = cvRound(sigma*(depth == CV_8U ? 3 : 4)*2 + 1)|1;
     kernelSize = cvRound(sigma*4*2 + 1)|1;
-    assert( kernelSize < 64*2+1 );
+    assert( kernelSize < 32*2+1 );
 
     Mat kx;
     kx = getGaussianKernel(kernelSize,sigma,CV_32F);
@@ -342,7 +354,115 @@ void cuGaussianBlur(CudaImage &cuImg,float sigma)
 }
 
 
+void buildPyramidNoStream( const CudaImage& base, std::vector<CudaImage>& pyr, int nOctaves ,int nOctaveLayers ){
+    //the vector of sigma per octave
+    std::vector<double> sig(nOctaveLayers + 3);
+    //init the size of the pyramid images which is nOctave*nLayer
+    pyr.resize(nOctaves*(nOctaveLayers + 3));
 
+    // precompute Gaussian sigmas using the following formula:
+    //  \sigma_{total}^2 = \sigma_{i}^2 + \sigma_{i-1}^2
+    float sigma = 1.6;
+    sig[0] = sigma;
+    double k = std::pow( 2., 1. / nOctaveLayers );
+    for( int i = 1; i < nOctaveLayers + 3; i++ )
+    {
+        double sig_prev = std::pow(k, (double)(i-1))*sigma;
+        double sig_total = sig_prev*k;
+        sig[i] = std::sqrt(sig_total*sig_total - sig_prev*sig_prev);
+    }
+
+    for( int i = 0; i < nOctaveLayers + 3; i++ )
+    {
+
+    }
+
+//    for( int o = 0; o < nOctaves; o++ )
+//    {
+//        for( int i = 0; i < nOctaveLayers + 3; i++ )
+//        {
+//            CudaImage& dst = pyr[o*(nOctaveLayers + 3) + i];
+//            if( o == 0  &&  i == 0 )
+//                dst = base;
+//            // base of new octave is halved image from end of previous octave
+//            else if( i == 0 )
+//            {
+//                const CudaImage& src = pyr[(o-1)*(nOctaveLayers + 3) + nOctaveLayers];
+////                resize(src, dst, Size(src.cols/2, src.rows/2),
+////                       0, 0, INTER_NEAREST);
+//            }
+//            else
+//            {
+//                const CudaImage& src = pyr[o*(nOctaveLayers + 3) + i-1];
+//                //GaussianBlur(src, dst, Size(), sig[i], sig[i]);
+//            }
+//        }
+//    }
+}
+
+void displayOctave(std::vector<CudaImage> &Octave)
+{
+    Mat display;
+    int width = Octave[0].width;
+    int height = Octave[0].height*Octave.size();
+    display.create(height,width,CV_32F);
+
+//    for(int i = 0 ;  i<Octave.size(); i++){
+//        safeCall(cudaMemcpy2D(display.data+width*Octave[0].height*sizeof(float)*i,Octave[0].width*sizeof(float),Octave[0].d_data,Octave[0].pitch*sizeof(float),Octave[0].width*sizeof(float),(size_t) Octave[0].height,cudaMemcpyDeviceToHost));
+//    }
+    for(int i = 0 ;  i<Octave.size(); i++){
+        safeCall(cudaMemcpy2D(display.data+Octave[i].width*Octave[i].height*i*sizeof(float),Octave[i].width*sizeof(float),Octave[i].d_data,Octave[i].pitch*sizeof(float),Octave[i].width*sizeof(float),(size_t) Octave[i].height,cudaMemcpyDeviceToHost));
+    }
+    Mat gray;
+    display.convertTo(gray,DataType<uchar>::type, 1, 0);
+    cvNamedWindow("a",CV_WINDOW_NORMAL);
+    imshow("a",gray);
+    waitKey(0);
+}
+
+void computePerOctave(CudaImage& base, std::vector<double> &sig, int nOctaveLayers){
+
+    std::vector<CudaImage> Octave;
+    Octave.resize(nOctaveLayers + 3);
+    Octave[0].copyDevice(base);
+    for( int i = 1; i < nOctaveLayers + 3; i++ )
+    {
+        Octave[i].copyDevice(Octave[i-1]);
+        cuGaussianBlur(Octave[i],sig[i]);
+    }
+
+    //displayOctave(Octave);
+
+    std::vector<CudaImage> diffOctave;
+    diffOctave.resize(nOctaveLayers+2);
+    for(int i = 0;i<diffOctave.size();++i)
+        diffOctave[i].Allocate(Octave[0].width,Octave[0].height,Octave[0].pitch,NULL,NULL);
+//    float *d_data,pitch;
+//    safeCall(cudaMallocPitch((void **)&d_data, (size_t*)&pitch, (size_t)(sizeof(float)*Octave[0].width*5), (size_t)Octave[0].height));
+
+    dim3 Block(32,8);
+    dim3 Grid(iDivUp(Octave[0].pitch,Block.x),iDivUp(Octave[0].height,Block.y));
+
+
+//    float* Oct[6];
+//    float* DOct[5];
+//    for(int i = 0;i<Octave.size();i++)
+//        Oct[i] =Octave[i].d_data;
+
+//    for(int i = 0;i<diffOctave.size();i++)
+//        DOct[i] =diffOctave[i].d_data;
+
+    for(int i = 0;i<diffOctave.size();i++){
+        differenceImg<<<Grid,Block>>>(Octave[i].d_data,Octave[i+1].d_data,diffOctave[i].d_data,Octave[0].pitch,Octave[0].height);
+        safeCall(cudaDeviceSynchronize());
+    }
+
+    //displayOctave(diffOctave);
+
+    //build DoG
+
+
+}
 
 
 /*disable*/

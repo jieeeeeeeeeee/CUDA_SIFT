@@ -241,7 +241,7 @@ static Mat createInitialImage( const Mat& img, bool doubleImageSize, float sigma
     else
         img.convertTo(gray_fpt, DataType<sift_wt>::type, SIFT_FIXPT_SCALE, 0);
 
-    //sigma different which is sqrt(1.6*1.6-0.5*0.5)
+    //sigma different which is sqrt(1.6*1.6-0.5*0.5*4)
     float sig_diff;
 
     //double the size of the original image to build the zero octave
