@@ -768,6 +768,7 @@ void SIFT_Impl::findScaleSpaceExtrema( const std::vector<Mat>& gauss_pyr, const 
     const int nOctaves = (int)gauss_pyr.size()/(nOctaveLayers + 3);
     const int threshold = cvFloor(0.5 * contrastThreshold / nOctaveLayers * 255 * SIFT_FIXPT_SCALE);
 
+    //TLS threads local Storage
     keypoints.clear();
     TLSData<std::vector<KeyPoint> > tls_kpts_struct;
 
@@ -1176,8 +1177,11 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
                       OutputArray _descriptors,
                       bool useProvidedKeypoints)
 {
-
+#ifdef USE_MY_FUNCTIONS
+    int firstOctave = 0, actualNOctaves = 0, actualNLayers = 0;
+#else
     int firstOctave = -1, actualNOctaves = 0, actualNLayers = 0;
+#endif
     Mat image = _image.getMat(), mask = _mask.getMat();
 
     if( image.empty() || image.depth() != CV_8U )

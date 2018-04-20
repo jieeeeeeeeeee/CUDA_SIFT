@@ -7,8 +7,19 @@
 #include <opencv2/cudafilters.hpp>
 #include <cuda.h>
 
-#define IMAGE_SHOW
+#define USE_MY_SIFT
+
+
+#ifdef USE_SIFT OR USE_SURF
+#include "opencv2/features2d.hpp"
+#endif
+#ifdef USE_MY_SIFT
+#include"sift/sift.h"
+#endif
+
+//#define IMAGE_SHOW
 using namespace cv;
+using namespace std;
 
 void detectAndCompute(InputArray _image, InputArray _mask,
                       std::vector<KeyPoint>& keypoints,
@@ -24,10 +35,13 @@ int main()
 {
     std::cout<<"Hello World !"<<std::endl;
 
+    char *a ="../data/road.png";
+    //char *a ="../data/lena.png";
+    //char *a ="../data/100_7101.JPG";
     cv::Mat src;
-    src = imread("../data/100_7101.JPG",0);
+    //src = imread("../data/100_7101.JPG",0);
     //src = imread("../data/lena.png",0);
-    //src = imread("../data/road.png",0);
+    src = imread(a,0);
     //src = imread("../data/DSC04034.JPG",0);
     int width = src.cols;
     int height = src.rows;
@@ -35,12 +49,13 @@ int main()
     {
         printf("no photo");
     }
-    int sigma1 = 5;
+    int sigma1 = 1.6;
 
     Mat tmp;
     src.convertTo(tmp, CV_32FC1);
 
 
+    //warming up time
 #ifdef TIME
     double t, tf = getTickFrequency();
     t = (double)getTickCount();
@@ -52,12 +67,18 @@ int main()
     printf("time cost in warming up: %g ms\n", t*1000./tf);
 #endif
 
-
     cuimg.Download();
-    cuGaussianBlur(cuimg,sigma1);
+//    cuGaussianBlur(cuimg,sigma1);
+
+
+    //nodoublesize
+    int firstOctave = 0, actualNLayers = 0;
+
+    CudaImage base;
+    createInitialImage(src,base,(float)1.6,firstOctave<0);
 #ifdef IMAGE_SHOW
-    Mat dis(cuimg.height,cuimg.width,CV_32F);
-    safeCall(cudaMemcpy2D(dis.data,cuimg.width*sizeof(float),cuimg.d_data,cuimg.pitch*sizeof(float),cuimg.width*sizeof(float),(size_t) cuimg.height,cudaMemcpyDeviceToHost));
+    Mat dis(base.height,base.width,CV_32F);
+    safeCall(cudaMemcpy2D(dis.data,base.width*sizeof(float),base.d_data,base.pitch*sizeof(float),base.width*sizeof(float),(size_t) base.height,cudaMemcpyDeviceToHost));
     Mat gray;
     dis.convertTo(gray,DataType<uchar>::type, 1, 0);
     cvNamedWindow("ss",CV_WINDOW_NORMAL);
@@ -66,8 +87,15 @@ int main()
 #endif
 
     int nOctaveLayers = 3;
-    int firstOctave = -1;
     int nOctaves = cvRound(std::log( (double)std::min( cuimg.width, cuimg.height ) ) / std::log(2.) - 2) - firstOctave;
+
+    std::vector<CudaImage> gpyr,godpyr;
+    buildGaussianPyramid(base, gpyr, nOctaves);
+
+
+
+
+
     //std::vector<CudaImage> pyr;
     //buildPyramidNoStream(cuimg,pyr,nOctaves,nOctaveLayers);
 
@@ -84,12 +112,45 @@ int main()
         sig[i] = std::sqrt(sig_total*sig_total - sig_prev*sig_prev);
     }
 
-
     computePerOctave(cuimg,sig,nOctaveLayers);
 //    float *d_data;
 //    safeCall(cudaMalloc(&d_data,1<<30));
 
 
+    /////////////////////////////////////
+    /// SIFT
+    /////////////////////////////////////
+    //Create SIFT class pointer
+#ifdef USE_MY_SIFT
+    Ptr<Feature2D> f2d = xfeatures2d::q::SIFT::create();
+#else
+    Ptr<Feature2D> f2d = xfeatures2d::SIFT::create();
+#endif
+    //读入图片
+    Mat img_1 = imread(a);
+
+    //Detect the keypoints
+    vector<KeyPoint> keypoints_1, keypoints_2;
+    f2d->detect(img_1, keypoints_1);
+
+    //Calculate descriptors (feature vectors)
+    Mat descriptors_1, descriptors_2;
+    f2d->compute(img_1, keypoints_1, descriptors_1);
+
+    for(int i = 0;i<keypoints_1.size();++i){
+        keypoints_1[i].angle = 0;
+        keypoints_1[i].class_id = 0;
+        keypoints_1[i].octave = 0;
+        keypoints_1[i].response = 0;
+        keypoints_1[i].size = 0;
+        //keypoints_1[i].pt.x = 0;
+    }
+    Mat kepoint;
+    drawKeypoints(img_1, keypoints_1,kepoint);
+    cvNamedWindow("extract",CV_WINDOW_NORMAL);
+    imshow("extract", kepoint);
+    //等待任意按键按下
+    waitKey(0);
 
     return 0;
 }

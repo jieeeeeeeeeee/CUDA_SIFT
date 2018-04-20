@@ -6,6 +6,8 @@
 
 #define __MAXSIZECON 32*2+1
 __constant__ float coeffGaussKernel[__MAXSIZECON];
+__device__ unsigned int d_PointCounter[1];
+__device__ float *pd[5];
 texture<float, 1, cudaReadModeElementType> texRef;
 
 /***********
@@ -283,10 +285,279 @@ __global__ void differenceImg(float *d_Octave0,float *d_Octave1,float *d_diffOct
 
     int index = y * pitch + x;
     if(y<height)
-        d_diffOctave[index] = (d_Octave1[index] - d_Octave0[index])*50;
+        d_diffOctave[index] = (d_Octave1[index] - d_Octave0[index]);
+
+}
+
+__global__ void findScaleSpaceExtrema(float *prev,float *img,float *next,float *d_point,int width ,int pitch ,int height)
+{
+    int x = blockIdx.x*blockDim.x+threadIdx.x;
+    int y = blockIdx.y*blockDim.y+threadIdx.y;
+
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
+//    if(x<1 || y<1 || x>=width-1 || y>=height-1)
+//        return;
+
+    const int BLOCKDIMX = 32;
+    const int BLOCKDIMY = 8;
+
+    __shared__ float Mem0[BLOCKDIMY+2][BLOCKDIMX+2];
+    __shared__ float Mem1[BLOCKDIMY+2][BLOCKDIMX+2];
+    __shared__ float Mem2[BLOCKDIMY+2][BLOCKDIMX+2];
+
+    //the count of the extrema points in current block;
+    __shared__ unsigned int cnt;
+    //points storage in shared memory
+    __shared__ unsigned short points[96];
+
+
+//    float *ptr0 = prev[y * pitch + x];
+//    float *ptr1 = img[y * pitch + x];
+//    float *ptr2 = next[y * pitch + x];
+    prev += ( y-1 ) * pitch + x - 1;
+    img  += ( y-1 ) * pitch + x - 1;
+    next += ( y-1 ) * pitch + x - 1;
+
+    Mem0[ty][tx] = (x<0||y<0)? 0:prev[0];
+    Mem1[ty][tx] = (x<0||y<0)? 0:img[0];
+    Mem2[ty][tx] = (x<0||y<0)? 0:next[0];
+
+//    Mem1[ty][32] = -400;
+//    Mem1[8][tx] = -400;
+//    Mem1[8][32] = -400;
+    //prev[0] = 250;
+
+    if(tx == 0 && ty == 0){
+        #pragma unroll
+        for(int i = BLOCKDIMY;i<BLOCKDIMY + 2;i++)
+            #pragma unroll
+            for(int j = 0;j<BLOCKDIMX+2;j++){
+                Mem0[i][j] = (x<width||y<height)? prev[i*pitch + j]:0;
+                Mem1[i][j] = (x<width||y<height)? img[i*pitch + j]:0;
+                Mem2[i][j] = (x<width||y<height)? next[i*pitch + j]:0;
+            }
+        #pragma unroll
+        for(int i = 0;i<BLOCKDIMY;i++)
+            #pragma unroll
+            for(int j = BLOCKDIMX;j<2+BLOCKDIMX;j++){
+                Mem0[i][j] = (x<width||y<height)? prev[i*pitch + j]:0;
+                Mem1[i][j] = (x<width||y<height)? img[i*pitch + j]:0;
+                Mem2[i][j] = (x<width||y<height)? next[i*pitch + j]:0;
+            }
+      cnt = 0;
+      //for points count synchronism
+    }
+    __syncthreads();
+    prev += pitch + 1;
+    img += pitch + 1;
+    next += pitch + 1;
+
+//    prev[0] = Mem0[ty+1][tx+1] + 200;
+//    img[0] =  Mem1[ty+1][tx+1] + 200;
+//    next[0] = Mem2[ty+1][tx+1] + 200 ;
+    //next[0] = Mem2[ty+1][tx+1]*50 ;
+    const int threshold = int(0.5 * 0.04 / 3 * 255);
+
+    float val = img[0];
+    int c = 0;
+    int step = pitch;
+    float *currptr = img;
+    float *nextptr = next;
+    float *prevptr = prev;
+    if( std::abs(val) > threshold &&
+       ((val > 0 && val >= currptr[c-1] && val >= currptr[c+1] &&
+         val >= currptr[c-step-1] && val >= currptr[c-step] && val >= currptr[c-step+1] &&
+         val >= currptr[c+step-1] && val >= currptr[c+step] && val >= currptr[c+step+1] &&
+         val >= nextptr[c] && val >= nextptr[c-1] && val >= nextptr[c+1] &&
+         val >= nextptr[c-step-1] && val >= nextptr[c-step] && val >= nextptr[c-step+1] &&
+         val >= nextptr[c+step-1] && val >= nextptr[c+step] && val >= nextptr[c+step+1] &&
+         val >= prevptr[c] && val >= prevptr[c-1] && val >= prevptr[c+1] &&
+         val >= prevptr[c-step-1] && val >= prevptr[c-step] && val >= prevptr[c-step+1] &&
+         val >= prevptr[c+step-1] && val >= prevptr[c+step] && val >= prevptr[c+step+1]) ||
+        (val < 0 && val <= currptr[c-1] && val <= currptr[c+1] &&
+         val <= currptr[c-step-1] && val <= currptr[c-step] && val <= currptr[c-step+1] &&
+         val <= currptr[c+step-1] && val <= currptr[c+step] && val <= currptr[c+step+1] &&
+         val <= nextptr[c] && val <= nextptr[c-1] && val <= nextptr[c+1] &&
+         val <= nextptr[c-step-1] && val <= nextptr[c-step] && val <= nextptr[c-step+1] &&
+         val <= nextptr[c+step-1] && val <= nextptr[c+step] && val <= nextptr[c+step+1] &&
+         val <= prevptr[c] && val <= prevptr[c-1] && val <= prevptr[c+1] &&
+         val <= prevptr[c-step-1] && val <= prevptr[c-step] && val <= prevptr[c-step+1] &&
+         val <= prevptr[c+step-1] && val <= prevptr[c+step] && val <= prevptr[c+step+1])))
+    {
+
+
+
+        int pos = atomicInc(&cnt, 31);
+        points[3*pos+0] = x;
+        points[3*pos+1] = y;
+        //points[3*pos+2] = scale;
+
+
+        unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
+        idx = (idx>=2000 ? 2000-1 : idx);
+        d_point[idx*2] = x;
+        d_point[idx*2+1] = y;
+
+
+        printf("cnt : %d , x = %d , y = %d,asd: %f \n",idx,x,y,d_point[idx*2]);
+    }
 
 
 }
+
+
+__global__ void findScaleSpaceExtrema(float *d_point,int i, int width ,int pitch ,int height){
+
+    int x = blockIdx.x*blockDim.x+threadIdx.x;
+    int y = blockIdx.y*blockDim.y+threadIdx.y;
+//    float *ptr = pd[3];
+//    ptr[y*1152+x] += 200;
+    const int threshold = int(0.5 * 0.04 / 3 * 255);
+//    const float *img = pd[i];
+//    const float *prev = pd[i-1];
+//    const float *next = pd[i+1];
+
+    if(y > height - 1 || x > width - 1)
+        return;
+
+    float *currptr = pd[i]  +y*pitch+x;
+    float *prevptr = pd[i-1]+y*pitch+x;
+    float *nextptr = pd[i+1]+y*pitch+x;
+
+    float val = *currptr;
+    int step = pitch;
+    int c = 0;
+    if( std::abs(val) > threshold &&
+       ((val > 0 && val >= currptr[c-1] && val >= currptr[c+1] &&
+         val >= currptr[c-step-1] && val >= currptr[c-step] && val >= currptr[c-step+1] &&
+         val >= currptr[c+step-1] && val >= currptr[c+step] && val >= currptr[c+step+1] &&
+         val >= nextptr[c] && val >= nextptr[c-1] && val >= nextptr[c+1] &&
+         val >= nextptr[c-step-1] && val >= nextptr[c-step] && val >= nextptr[c-step+1] &&
+         val >= nextptr[c+step-1] && val >= nextptr[c+step] && val >= nextptr[c+step+1] &&
+         val >= prevptr[c] && val >= prevptr[c-1] && val >= prevptr[c+1] &&
+         val >= prevptr[c-step-1] && val >= prevptr[c-step] && val >= prevptr[c-step+1] &&
+         val >= prevptr[c+step-1] && val >= prevptr[c+step] && val >= prevptr[c+step+1]) ||
+        (val < 0 && val <= currptr[c-1] && val <= currptr[c+1] &&
+         val <= currptr[c-step-1] && val <= currptr[c-step] && val <= currptr[c-step+1] &&
+         val <= currptr[c+step-1] && val <= currptr[c+step] && val <= currptr[c+step+1] &&
+         val <= nextptr[c] && val <= nextptr[c-1] && val <= nextptr[c+1] &&
+         val <= nextptr[c-step-1] && val <= nextptr[c-step] && val <= nextptr[c-step+1] &&
+         val <= nextptr[c+step-1] && val <= nextptr[c+step] && val <= nextptr[c+step+1] &&
+         val <= prevptr[c] && val <= prevptr[c-1] && val <= prevptr[c+1] &&
+         val <= prevptr[c-step-1] && val <= prevptr[c-step] && val <= prevptr[c-step+1] &&
+         val <= prevptr[c+step-1] && val <= prevptr[c+step] && val <= prevptr[c+step+1])))
+    {
+
+        unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
+        idx = (idx>=2000 ? 2000-1 : idx);
+        d_point[idx*2] = x;
+        d_point[idx*2+1] = y;
+
+        printf("cnt : %d , x = %d , y = %d,asd: %f \n",idx,x,y,d_point[idx*2]);
+
+    }
+
+
+}
+
+// Scale down thread block width
+#define SCALEDOWN_W   160
+// Scale down thread block height
+#define SCALEDOWN_H    16
+__constant__ float d_Kernel1[5];
+
+__global__ void ScaleDown(float *d_Result, float *d_Data, int width, int pitch, int height, int newpitch)
+{
+  __shared__ float inrow[SCALEDOWN_W+4];
+  __shared__ float brow[5*(SCALEDOWN_W/2)];
+  __shared__ int yRead[SCALEDOWN_H+4];
+  __shared__ int yWrite[SCALEDOWN_H+4];
+  #define dx2 (SCALEDOWN_W/2)
+  const int tx = threadIdx.x;
+  const int tx0 = tx + 0*dx2;
+  const int tx1 = tx + 1*dx2;
+  const int tx2 = tx + 2*dx2;
+  const int tx3 = tx + 3*dx2;
+  const int tx4 = tx + 4*dx2;
+  const int xStart = blockIdx.x*SCALEDOWN_W;
+  const int yStart = blockIdx.y*SCALEDOWN_H;
+  const int xWrite = xStart/2 + tx;
+  const float *k = d_Kernel1;
+  if (tx<SCALEDOWN_H+4) {
+    int y = yStart + tx - 1;
+    y = (y<0 ? 0 : y);
+    y = (y>=height ? height-1 : y);
+    yRead[tx] = y*pitch;
+    yWrite[tx] = (yStart + tx - 4)/2 * newpitch;
+  }
+  __syncthreads();
+  int xRead = xStart + tx - 2;
+  xRead = (xRead<0 ? 0 : xRead);
+  xRead = (xRead>=width ? width-1 : xRead);
+  for (int dy=0;dy<SCALEDOWN_H+4;dy+=5) {
+    inrow[tx] = d_Data[yRead[dy+0] + xRead];
+    __syncthreads();
+    if (tx<dx2)
+      brow[tx0] = k[0]*(inrow[2*tx]+inrow[2*tx+4]) + k[1]*(inrow[2*tx+1]+inrow[2*tx+3]) + k[2]*inrow[2*tx+2];
+    __syncthreads();
+    if (tx<dx2 && dy>=4 && !(dy&1))
+      d_Result[yWrite[dy+0] + xWrite] = k[2]*brow[tx2] + k[0]*(brow[tx0]+brow[tx4]) + k[1]*(brow[tx1]+brow[tx3]);
+    if (dy<(SCALEDOWN_H+3)) {
+      inrow[tx] = d_Data[yRead[dy+1] + xRead];
+      __syncthreads();
+      if (tx<dx2)
+    brow[tx1] = k[0]*(inrow[2*tx]+inrow[2*tx+4]) + k[1]*(inrow[2*tx+1]+inrow[2*tx+3]) + k[2]*inrow[2*tx+2];
+      __syncthreads();
+      if (tx<dx2 && dy>=3 && (dy&1))
+    d_Result[yWrite[dy+1] + xWrite] = k[2]*brow[tx3] + k[0]*(brow[tx1]+brow[tx0]) + k[1]*(brow[tx2]+brow[tx4]);
+    }
+    if (dy<(SCALEDOWN_H+2)) {
+      inrow[tx] = d_Data[yRead[dy+2] + xRead];
+      __syncthreads();
+      if (tx<dx2)
+    brow[tx2] = k[0]*(inrow[2*tx]+inrow[2*tx+4]) + k[1]*(inrow[2*tx+1]+inrow[2*tx+3]) + k[2]*inrow[2*tx+2];
+      __syncthreads();
+      if (tx<dx2 && dy>=2 && !(dy&1))
+    d_Result[yWrite[dy+2] + xWrite] = k[2]*brow[tx4] + k[0]*(brow[tx2]+brow[tx1]) + k[1]*(brow[tx3]+brow[tx0]);
+    }
+    if (dy<(SCALEDOWN_H+1)) {
+      inrow[tx] = d_Data[yRead[dy+3] + xRead];
+      __syncthreads();
+      if (tx<dx2)
+    brow[tx3] = k[0]*(inrow[2*tx]+inrow[2*tx+4]) + k[1]*(inrow[2*tx+1]+inrow[2*tx+3]) + k[2]*inrow[2*tx+2];
+      __syncthreads();
+      if (tx<dx2 && dy>=1 && (dy&1))
+    d_Result[yWrite[dy+3] + xWrite] = k[2]*brow[tx0] + k[0]*(brow[tx3]+brow[tx2]) + k[1]*(brow[tx4]+brow[tx1]);
+    }
+    if (dy<SCALEDOWN_H) {
+      inrow[tx] = d_Data[yRead[dy+4] + xRead];
+      __syncthreads();
+      if (tx<dx2)
+    brow[tx4] = k[0]*(inrow[2*tx]+inrow[2*tx+4]) + k[1]*(inrow[2*tx+1]+inrow[2*tx+3]) + k[2]*inrow[2*tx+2];
+      __syncthreads();
+      if (tx<dx2 && !(dy&1))
+    d_Result[yWrite[dy+4] + xWrite] = k[2]*brow[tx1] + k[0]*(brow[tx4]+brow[tx3]) + k[1]*(brow[tx0]+brow[tx2]);
+    }
+    __syncthreads();
+  }
+}
+
+
+
+
+
+
+
+
+__global__ void test()
+{
+
+//    unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
+//    printf("cnt : %d \n",d_PointCounter[0]);
+}
+
 
 //input cudaImage and output cudaImage which d_data has been smooth
 void cuGaussianBlur(CudaImage &cuImg,float sigma)
@@ -352,7 +623,134 @@ void cuGaussianBlur(CudaImage &cuImg,float sigma)
 
 
 }
+void createInitialImage(const Mat &src, CudaImage &base, float sigma,bool doubleImageSize)
+{
+    int width = src.cols;
+    int height = src.rows;
+    if(!src.data){
+        printf("input none data !");
+        return;
+    }
 
+    Mat gray, gray_fpt;
+    if( src.channels() == 3 || src.channels() == 4 )
+    {
+        cvtColor(src, gray, COLOR_BGR2GRAY);
+        gray.convertTo(gray_fpt, DataType<float>::type, 1, 0);
+    }
+    else
+        src.convertTo(gray_fpt, DataType<float>::type, 1, 0);
+
+    //sigma different which is sqrt(1.6*1.6-0.5*0.5*4)
+    float sig_diff;
+
+    if( doubleImageSize )
+    {
+    }
+    else
+    {
+        sig_diff = sqrtf( std::max(sigma * sigma - SIFT_INIT_SIGMA * SIFT_INIT_SIGMA, 0.01f) );
+        base.Allocate(width,height,iAlignUp(width, 128),false,NULL,(float*)gray_fpt.data);
+        base.Download();
+        cuGaussianBlur(base,sig_diff);
+        //GaussianBlur(gray_fpt, gray_fpt, Size(), sig_diff, sig_diff);
+    }
+
+
+}
+
+double ScaleDown(CudaImage &res, CudaImage &src, float variance)
+{
+  if (res.d_data==NULL || src.d_data==NULL) {
+    printf("ScaleDown: missing data\n");
+    return 0.0;
+  }
+  float h_Kernel[5];
+  float kernelSum = 0.0f;
+  for (int j=0;j<5;j++) {
+    h_Kernel[j] = (float)expf(-(double)(j-2)*(j-2)/2.0/variance);
+    kernelSum += h_Kernel[j];
+  }
+  for (int j=0;j<5;j++)
+    h_Kernel[j] /= kernelSum;
+  safeCall(cudaMemcpyToSymbol(d_Kernel1, h_Kernel, 5*sizeof(float)));
+  dim3 blocks(iDivUp(src.width, SCALEDOWN_W), iDivUp(src.height, SCALEDOWN_H));
+  dim3 threads(SCALEDOWN_W + 4);
+  ScaleDown<<<blocks, threads>>>(res.d_data, src.d_data, src.width, src.pitch, src.height, res.pitch);
+  checkMsg("ScaleDown() execution failed\n");
+  return 0.0;
+}
+
+void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOctaves){
+    //the vector of sigma per octave
+    std::vector<double> sig(nOctaveLayers + 3);
+    //init the size of the pyramid images which is nOctave*nLayer
+    pyr.resize(nOctaves*(nOctaveLayers + 3));
+
+    // precompute Gaussian sigmas using the following formula:
+    //  \sigma_{total}^2 = \sigma_{i}^2 + \sigma_{i-1}^2
+    sig[0] = sigma;
+    double k = std::pow( 2., 1. / nOctaveLayers );
+    for( int i = 1; i < nOctaveLayers + 3; i++ )
+    {
+        double sig_prev = std::pow(k, (double)(i-1))*sigma;
+        double sig_total = sig_prev*k;
+        sig[i] = std::sqrt(sig_total*sig_total - sig_prev*sig_prev);
+    }
+
+//    base.Readback();
+//    disMatf(base);
+//    CudaImage subImg;
+//    int p = iAlignUp(base.width/2, 128);
+//    subImg.Allocate(base.width/2, base.height/2, p, true);
+//    ScaleDown(subImg, base, 0.5f);
+
+//    CudaImage subImg1;
+//    int p1 = iAlignUp(subImg.width/2, 128);
+//    subImg1.Allocate(subImg.width/2, subImg.height/2, p1, true);
+//    ScaleDown(subImg1, subImg, 0.5f);
+
+//    subImg1.Readback();
+//    disMatf(subImg1);
+
+
+    for( int o = 0; o < nOctaves; o++ )
+    {
+        for( int i = 0; i < nOctaveLayers + 3; i++ )
+        {
+//            Mat& dst = pyr[o*(nOctaveLayers + 3) + i];
+//            if( o == 0  &&  i == 0 )
+//                dst = base;
+//            // base of new octave is halved image from end of previous octave
+//            else if( i == 0 )
+//            {
+//                const Mat& src = pyr[(o-1)*(nOctaveLayers + 3) + nOctaveLayers];
+//                resize(src, dst, Size(src.cols/2, src.rows/2),
+//                       0, 0, INTER_NEAREST);
+//            }
+//            else
+//            {
+//                const Mat& src = pyr[o*(nOctaveLayers + 3) + i-1];
+
+//#ifdef  USE_MY_FUNCTIONS
+//                CudaImage cuimg;
+//                cuimg.Allocate(src.cols,src.rows,iAlignUp(src.cols, 128),false,NULL,(float*)src.data);
+//                cuimg.Download();
+//                cuGaussianBlur(cuimg,sig[i]);
+//                dst.create(src.size(),src.type());
+//                safeCall(cudaMemcpy2D(dst.data,cuimg.width*sizeof(float),cuimg.d_data,cuimg.pitch*sizeof(float),cuimg.width*sizeof(float),(size_t) cuimg.height,cudaMemcpyDeviceToHost));
+//        //        Mat gray;
+//        //        gray_fpt.convertTo(gray,DataType<uchar>::type, 1, 0);
+//        //        cvNamedWindow("ss",CV_WINDOW_NORMAL);
+//        //        imshow("ss",gray);
+//        //        waitKey(0);
+//#else
+//                GaussianBlur(src, dst, Size(), sig[i], sig[i]);
+//#endif
+//            }
+        }
+    }
+}
 
 void buildPyramidNoStream( const CudaImage& base, std::vector<CudaImage>& pyr, int nOctaves ,int nOctaveLayers ){
     //the vector of sigma per octave
@@ -420,6 +818,16 @@ void displayOctave(std::vector<CudaImage> &Octave)
     waitKey(0);
 }
 
+void disMatf(char* name,CudaImage &img){
+    Mat dis(img.height,img.width,CV_32F);
+    safeCall(cudaMemcpy2D(dis.data,img.width*sizeof(float),img.d_data,img.pitch*sizeof(float),img.width*sizeof(float),(size_t) img.height,cudaMemcpyDeviceToHost));
+    Mat gray;
+    dis.convertTo(gray,DataType<uchar>::type, 1, 200);
+    cvNamedWindow(name,CV_WINDOW_NORMAL);
+    imshow(name,gray);
+
+}
+
 void computePerOctave(CudaImage& base, std::vector<double> &sig, int nOctaveLayers){
 
     std::vector<CudaImage> Octave;
@@ -444,22 +852,98 @@ void computePerOctave(CudaImage& base, std::vector<double> &sig, int nOctaveLaye
     dim3 Grid(iDivUp(Octave[0].pitch,Block.x),iDivUp(Octave[0].height,Block.y));
 
 
-//    float* Oct[6];
-//    float* DOct[5];
-//    for(int i = 0;i<Octave.size();i++)
-//        Oct[i] =Octave[i].d_data;
-
-//    for(int i = 0;i<diffOctave.size();i++)
-//        DOct[i] =diffOctave[i].d_data;
-
     for(int i = 0;i<diffOctave.size();i++){
         differenceImg<<<Grid,Block>>>(Octave[i].d_data,Octave[i+1].d_data,diffOctave[i].d_data,Octave[0].pitch,Octave[0].height);
         safeCall(cudaDeviceSynchronize());
     }
 
-    //displayOctave(diffOctave);
 
-    //build DoG
+#ifdef SHOW
+    //displayOctave(diffOctave);
+#endif
+
+    ////////////////////
+    /// findScaleSpaceExtrema
+    ////////////////////
+
+
+    int totPts = 0;
+    safeCall(cudaMemcpyToSymbol(d_PointCounter, &totPts, sizeof(int)));
+    float *d_point;
+    cudaMalloc(&d_point,sizeof(float)*2000*2);
+    //for(int i = 0 ; i < diffOctave - 1;i++)
+    int i = 2;
+    //findScaleSpaceExtrema<<<Grid,Block>>>(diffOctave[i].d_data,diffOctave[i+1].d_data,diffOctave[i+2].d_data,d_point,Octave[0].width,Octave[0].pitch,Octave[0].height);
+    //safeCall(cudaDeviceSynchronize());
+
+//    float *p[3+2];
+//    float d = 2;
+//    float *s = &d;
+//    p[0] = s;
+//    std::cout<<*(p[0])<<"  "<< sizeof(float*) <<std::endl;
+
+//    test<<<1,1>>>(p);
+
+    float *h_pd[3+2];
+    for(int i = 0;i<5;i++)
+        h_pd[i] = diffOctave[i].d_data;
+    safeCall(cudaMemcpyToSymbol(pd, h_pd, sizeof(float *)*5));
+
+    int width = Octave[0].width;
+    int pitch = Octave[0].pitch;
+    int heigh = Octave[0].height;
+
+    findScaleSpaceExtrema<<<Grid,Block>>>(d_point,3,Octave[0].width,Octave[0].pitch,Octave[0].height);
+    safeCall(cudaDeviceSynchronize());
+
+
+#ifdef SHOW
+    disMatf("prve",diffOctave[i]);
+    disMatf("current",diffOctave[i+1]);
+    disMatf("next",diffOctave[i+2]);
+    waitKey(0);
+#endif
+
+//    test<<<2,23>>>();
+
+    int num = 0;
+    safeCall(cudaMemcpyFromSymbol(&num, d_PointCounter, sizeof(int)));
+    num = (num>2000)? 2000:num;
+    printf("width : %d , height : %d , num : %d \n",Octave[0].width,Octave[0].height,num);
+
+    float *h_points;
+    h_points = (float *)malloc(num*2*sizeof(float));
+    //h_points = new float[num*2];
+    safeCall(cudaMemcpy(h_points,d_point,num*2*sizeof(float),cudaMemcpyDeviceToHost));
+    std::vector<KeyPoint> keypoints;
+    keypoints.resize(num);
+    for(int i = 0;i<keypoints.size();++i)
+    {
+        keypoints[i].pt.x =  h_points[i*2];
+        keypoints[i].pt.y =  h_points[i*2+1];
+    }
+
+
+
+#ifdef SHOW
+    Mat kepoint;
+    CudaImage &img = diffOctave[i+1];
+    Mat img_1(img.height,img.width,CV_32F);
+    safeCall(cudaMemcpy2D(img_1.data,img.width*sizeof(float),diffOctave[i+1].d_data,img.pitch*sizeof(float),img.width*sizeof(float),(size_t) img.height,cudaMemcpyDeviceToHost));
+    Mat gray;
+    img_1.convertTo(gray,DataType<uchar>::type, 1, 200);
+    drawKeypoints(gray,keypoints,kepoint);
+    //char *a ="../data/road.png";
+    //Mat img_1 = imread(a);
+    //drawKeypoints(img_1,keypoints,kepoint);
+
+    cvNamedWindow("extract_my",CV_WINDOW_NORMAL);
+    imshow("extract_my", kepoint);
+    waitKey(0);
+#endif
+
+
+
 
 
 }
@@ -482,7 +966,7 @@ void disMatf(CudaImage &cuImg){
     Mat gray;
     dis.convertTo(gray,DataType<uchar>::type, 1, 0);
 
-    cvNamedWindow("ss",CV_WINDOW_NORMAL);
-    imshow("ss",gray);
+    cvNamedWindow("ff",CV_WINDOW_NORMAL);
+    imshow("ff",gray);
     waitKey();
 }
