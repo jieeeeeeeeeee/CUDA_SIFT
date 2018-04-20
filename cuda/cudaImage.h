@@ -23,6 +23,8 @@ public:
   double InitTexture();
   double CopyToTexture(CudaImage &dst, bool host);
   void copyDevice(CudaImage &src);
+  void copyDevice(CudaImage &src,bool haveDevice);
+
 };
 
 

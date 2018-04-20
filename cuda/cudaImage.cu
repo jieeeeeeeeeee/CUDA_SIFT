@@ -120,3 +120,14 @@ void CudaImage::copyDevice(CudaImage &src){
     safeCall(cudaMemcpy2D(d_data, sizeof(float)*pitch, src.d_data, sizeof(float)*src.pitch, sizeof(float)*width, height, cudaMemcpyDeviceToDevice));
     d_internalAlloc = true;
 }
+void CudaImage::copyDevice(CudaImage &src,bool haveDevice){
+    width = src.width;
+    height = src.height;
+    pitch = src.pitch;
+    if(!haveDevice){
+        safeCall(cudaMallocPitch((void **)&d_data, (size_t*)&pitch, (size_t)(sizeof(float)*width), (size_t)height));
+        d_internalAlloc = true;
+    }
+    pitch /= sizeof(float);
+    safeCall(cudaMemcpy2D(d_data, sizeof(float)*pitch, src.d_data, sizeof(float)*src.pitch, sizeof(float)*width, height, cudaMemcpyDeviceToDevice));
+}

@@ -7,7 +7,8 @@
 #define __MAXSIZECON 32*2+1
 __constant__ float coeffGaussKernel[__MAXSIZECON];
 __device__ unsigned int d_PointCounter[1];
-__device__ float *pd[5];
+//choose 55 suport 16384 pixel size image (log2(16384) - 3)*5
+__device__ float *pd[55];
 texture<float, 1, cudaReadModeElementType> texRef;
 
 /***********
@@ -451,7 +452,7 @@ __global__ void findScaleSpaceExtrema(float *d_point,int i, int width ,int pitch
     {
 
         unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
-        idx = (idx>=2000 ? 2000-1 : idx);
+        idx = (idx>=1000 ? 1000-1 : idx);
         d_point[idx*2] = x;
         d_point[idx*2+1] = y;
 
@@ -665,6 +666,8 @@ double ScaleDown(CudaImage &res, CudaImage &src, float variance)
     printf("ScaleDown: missing data\n");
     return 0.0;
   }
+//  double a = 0.6;
+//  float h_Kernel[5] = {1.0/4 - a/2.0, 1.0/4, a, 1.0/4, 1.0/4 - a/2.0};
   float h_Kernel[5];
   float kernelSum = 0.0f;
   for (int j=0;j<5;j++) {
@@ -687,6 +690,20 @@ void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOct
     //init the size of the pyramid images which is nOctave*nLayer
     pyr.resize(nOctaves*(nOctaveLayers + 3));
 
+    int w = base.width;
+    int h = base.height;
+    for( int o = 0; o < nOctaves; o++ )
+    {
+        if(o != 0){
+            w /= 2;
+            h /= 2;
+        }
+        for( int i = 0; i < nOctaveLayers + 3; i++ ){
+            pyr[o*(nOctaveLayers + 3) + i].Allocate(w,h,iAlignUp(w, 128),false);
+        }
+    }
+
+
     // precompute Gaussian sigmas using the following formula:
     //  \sigma_{total}^2 = \sigma_{i}^2 + \sigma_{i-1}^2
     sig[0] = sigma;
@@ -698,105 +715,165 @@ void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOct
         sig[i] = std::sqrt(sig_total*sig_total - sig_prev*sig_prev);
     }
 
-//    base.Readback();
-//    disMatf(base);
-//    CudaImage subImg;
-//    int p = iAlignUp(base.width/2, 128);
-//    subImg.Allocate(base.width/2, base.height/2, p, true);
-//    ScaleDown(subImg, base, 0.5f);
-
-//    CudaImage subImg1;
-//    int p1 = iAlignUp(subImg.width/2, 128);
-//    subImg1.Allocate(subImg.width/2, subImg.height/2, p1, true);
-//    ScaleDown(subImg1, subImg, 0.5f);
-
-//    subImg1.Readback();
-//    disMatf(subImg1);
 
 
     for( int o = 0; o < nOctaves; o++ )
     {
         for( int i = 0; i < nOctaveLayers + 3; i++ )
         {
-//            Mat& dst = pyr[o*(nOctaveLayers + 3) + i];
-//            if( o == 0  &&  i == 0 )
-//                dst = base;
-//            // base of new octave is halved image from end of previous octave
-//            else if( i == 0 )
-//            {
-//                const Mat& src = pyr[(o-1)*(nOctaveLayers + 3) + nOctaveLayers];
-//                resize(src, dst, Size(src.cols/2, src.rows/2),
-//                       0, 0, INTER_NEAREST);
-//            }
-//            else
-//            {
-//                const Mat& src = pyr[o*(nOctaveLayers + 3) + i-1];
-
-//#ifdef  USE_MY_FUNCTIONS
-//                CudaImage cuimg;
-//                cuimg.Allocate(src.cols,src.rows,iAlignUp(src.cols, 128),false,NULL,(float*)src.data);
-//                cuimg.Download();
-//                cuGaussianBlur(cuimg,sig[i]);
-//                dst.create(src.size(),src.type());
-//                safeCall(cudaMemcpy2D(dst.data,cuimg.width*sizeof(float),cuimg.d_data,cuimg.pitch*sizeof(float),cuimg.width*sizeof(float),(size_t) cuimg.height,cudaMemcpyDeviceToHost));
-//        //        Mat gray;
-//        //        gray_fpt.convertTo(gray,DataType<uchar>::type, 1, 0);
-//        //        cvNamedWindow("ss",CV_WINDOW_NORMAL);
-//        //        imshow("ss",gray);
-//        //        waitKey(0);
-//#else
-//                GaussianBlur(src, dst, Size(), sig[i], sig[i]);
-//#endif
-//            }
+            CudaImage& dst = pyr[o*(nOctaveLayers + 3) + i];
+            if( o == 0  &&  i == 0 ){
+                dst.copyDevice(base,0);
+#ifdef SHOW_GAUSSIANPYRAMID
+                CudaImage &src = dst;
+                Mat gray,show;
+                show.create(src.height,src.width,CV_32F);
+                safeCall(cudaMemcpy2D(show.data,src.width*sizeof(float),src.d_data,src.pitch*sizeof(float),src.width*sizeof(float),(size_t) src.height,cudaMemcpyDeviceToHost));
+                show.convertTo(gray,DataType<uchar>::type, 1, 0);
+                cvNamedWindow("ss",CV_WINDOW_NORMAL);
+                imshow("ss",gray);
+                waitKey(0);
+#endif
+            }
+            // base of new octave is halved image from end of previous octave
+            else if( i == 0 )
+            {
+                CudaImage& src = pyr[(o-1)*(nOctaveLayers + 3) + nOctaveLayers];
+                ScaleDown(dst,src,0.5);
+            }
+            else
+            {
+                CudaImage& src = pyr[o*(nOctaveLayers + 3) + i-1];
+                dst.copyDevice(src,0);
+                cuGaussianBlur(dst,sig[i]);
+#ifdef SHOW_GAUSSIANPYRAMID
+                Mat gray,show;
+                show.create(dst.height,dst.width,CV_32F);
+                safeCall(cudaMemcpy2D(show.data,src.width*sizeof(float),dst.d_data,src.pitch*sizeof(float),src.width*sizeof(float),(size_t) src.height,cudaMemcpyDeviceToHost));
+                show.convertTo(gray,DataType<uchar>::type, 1, 0);
+                cvNamedWindow("ss",CV_WINDOW_NORMAL);
+                imshow("ss",gray);
+                waitKey(0);
+#endif
+            }
         }
     }
 }
 
-void buildPyramidNoStream( const CudaImage& base, std::vector<CudaImage>& pyr, int nOctaves ,int nOctaveLayers ){
-    //the vector of sigma per octave
-    std::vector<double> sig(nOctaveLayers + 3);
-    //init the size of the pyramid images which is nOctave*nLayer
-    pyr.resize(nOctaves*(nOctaveLayers + 3));
+//could use cuda stream
+void buildDoGPyramid( std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr )
+{
+    int nOctaves = (int)gpyr.size()/(nOctaveLayers + 3);
+    dogpyr.resize( nOctaves*(nOctaveLayers + 2) );
 
-    // precompute Gaussian sigmas using the following formula:
-    //  \sigma_{total}^2 = \sigma_{i}^2 + \sigma_{i-1}^2
-    float sigma = 1.6;
-    sig[0] = sigma;
-    double k = std::pow( 2., 1. / nOctaveLayers );
-    for( int i = 1; i < nOctaveLayers + 3; i++ )
-    {
-        double sig_prev = std::pow(k, (double)(i-1))*sigma;
-        double sig_total = sig_prev*k;
-        sig[i] = std::sqrt(sig_total*sig_total - sig_prev*sig_prev);
+
+    //could use cuda stream
+    for(int o = 0;o<nOctaves;o++){
+        for(int i = 0;i<nOctaveLayers + 2;i++){
+            CudaImage& prev = gpyr[o*(nOctaveLayers + 2)+i+o];
+            CudaImage& next = gpyr[o*(nOctaveLayers + 2)+i+1+o];
+            CudaImage& diff = dogpyr[o*(nOctaveLayers + 2)+i];
+            diff.Allocate(prev.width,prev.height,prev.pitch,false);
+            dim3 Block(32,8);
+            dim3 Grid(iDivUp(diff.pitch,Block.x),iDivUp(diff.height,Block.y));
+            differenceImg<<<Grid,Block>>>(prev.d_data,next.d_data,diff.d_data,diff.pitch,diff.height);
+            safeCall(cudaDeviceSynchronize());
+#ifdef SHOW_DOGPYRAMID
+            Mat gray,show;
+            show.create(diff.height,diff.width,CV_32F);
+            safeCall(cudaMemcpy2D(show.data,diff.width*sizeof(float),diff.d_data,diff.pitch*sizeof(float),diff.width*sizeof(float),(size_t) diff.height,cudaMemcpyDeviceToHost));
+            show.convertTo(gray,DataType<uchar>::type, 30, 200);
+            cvNamedWindow("ss",CV_WINDOW_NORMAL);
+            imshow("ss",gray);
+            waitKey(0);
+#endif
+        }
     }
 
-    for( int i = 0; i < nOctaveLayers + 3; i++ )
-    {
 
-    }
-
-//    for( int o = 0; o < nOctaves; o++ )
-//    {
-//        for( int i = 0; i < nOctaveLayers + 3; i++ )
-//        {
-//            CudaImage& dst = pyr[o*(nOctaveLayers + 3) + i];
-//            if( o == 0  &&  i == 0 )
-//                dst = base;
-//            // base of new octave is halved image from end of previous octave
-//            else if( i == 0 )
-//            {
-//                const CudaImage& src = pyr[(o-1)*(nOctaveLayers + 3) + nOctaveLayers];
-////                resize(src, dst, Size(src.cols/2, src.rows/2),
-////                       0, 0, INTER_NEAREST);
-//            }
-//            else
-//            {
-//                const CudaImage& src = pyr[o*(nOctaveLayers + 3) + i-1];
-//                //GaussianBlur(src, dst, Size(), sig[i], sig[i]);
-//            }
-//        }
-//    }
 }
+
+void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, float* keypoints){
+    int totPts = 0;
+    safeCall(cudaMemcpyToSymbol(d_PointCounter, &totPts, sizeof(int)));
+    cudaMalloc(&keypoints,sizeof(float)*maxPoints*2);
+
+
+    float **h_pd = new float*[dogpyr.size()];
+    for(int i = 0;i<dogpyr.size();i++)
+        h_pd[i] = dogpyr[i].d_data;
+    safeCall(cudaMemcpyToSymbol(pd, h_pd, sizeof(float *)*dogpyr.size()));
+
+    //std::cout<<dogpyr.size()<<std::endl;
+//    float* h_pd[30];
+//    for(int i = 0;i<dogpyr.size();i++)
+//        h_pd[i] = dogpyr[i].d_data;
+//    safeCall(cudaMemcpyToSymbol(pd, h_pd, sizeof(float *)*30));
+
+
+
+    dim3 Block(32,8);
+    int nOctaves = (int)gpyr.size()/(nOctaveLayers + 3);
+    for(int o = 0;o<nOctaves;o++){
+        for(int i = 0;i<nOctaveLayers;i++){
+            int index = o*(nOctaveLayers+2)+i+1;
+            dim3 Grid(iDivUp(dogpyr[index].pitch,Block.x),iDivUp(dogpyr[index].height,Block.y));
+            findScaleSpaceExtrema<<<Grid,Block>>>(keypoints,index,dogpyr[index].width,dogpyr[index].pitch,dogpyr[index].height);
+            safeCall(cudaDeviceSynchronize());
+        }
+    }
+
+
+
+
+    //float *h_pd[5];
+//    float **h_pd = new float*[5];
+//    for(int i = 0;i<5;i++)
+//        h_pd[i] = dogpyr[i].d_data;
+//    safeCall(cudaMemcpyToSymbol(pd, h_pd, sizeof(float *)*5));
+
+
+//    for(int i = 1;i<4;i++){
+//        dim3 Block(32,8);
+//        dim3 Grid(iDivUp(dogpyr[i].pitch,Block.x),iDivUp(dogpyr[i].height,Block.y));
+//        findScaleSpaceExtrema<<<Grid,Block>>>(keypoints,i,dogpyr[i].width,dogpyr[i].pitch,dogpyr[i].height);
+//        safeCall(cudaDeviceSynchronize());
+//    }
+#ifdef SHOW_KEYPOINT
+    int num = 0;
+    safeCall(cudaMemcpyFromSymbol(&num, d_PointCounter, sizeof(int)));
+    num = (num>maxPoints)? maxPoints:num;
+    printf("num : %d \n",num);
+
+    float *h_points;
+    h_points = (float *)malloc(num*2*sizeof(float));
+    safeCall(cudaMemcpy(h_points,keypoints,num*2*sizeof(float),cudaMemcpyDeviceToHost));
+    std::vector<KeyPoint> keypointss;
+    keypointss.resize(num);
+    for(int i = 0;i<keypointss.size();++i)
+    {
+        keypointss[i].pt.x =  h_points[i*2];
+        keypointss[i].pt.y =  h_points[i*2+1];
+    }
+
+    Mat kepoint;
+    CudaImage &img = gpyr[0];
+    Mat img_1(img.height,img.width,CV_32F);
+    safeCall(cudaMemcpy2D(img_1.data,img.width*sizeof(float),gpyr[0].d_data,gpyr[0].pitch*sizeof(float),gpyr[0].width*sizeof(float),(size_t) gpyr[0].height,cudaMemcpyDeviceToHost));
+    Mat gray;
+    img_1.convertTo(gray,DataType<uchar>::type, 1, 0);
+    drawKeypoints(gray,keypointss,kepoint);
+    //char *a ="../data/road.png";
+    //Mat img_1 = imread(a);
+    //drawKeypoints(img_1,keypoints,kepoint);
+
+    cvNamedWindow("extract_my",CV_WINDOW_NORMAL);
+    imshow("extract_my", kepoint);
+    waitKey(0);
+#endif
+
+}
+
 
 void displayOctave(std::vector<CudaImage> &Octave)
 {

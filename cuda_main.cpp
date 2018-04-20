@@ -87,17 +87,15 @@ int main()
 #endif
 
     int nOctaveLayers = 3;
-    int nOctaves = cvRound(std::log( (double)std::min( cuimg.width, cuimg.height ) ) / std::log(2.) - 2) - firstOctave;
+    int nOctaves = cvRound(std::log( (double)std::min( cuimg.width, cuimg.height ) ) / std::log(2.) - 3) - firstOctave;
 
-    std::vector<CudaImage> gpyr,godpyr;
+    std::vector<CudaImage> gpyr,dogpyr;
     buildGaussianPyramid(base, gpyr, nOctaves);
+    buildDoGPyramid(gpyr, dogpyr);
 
+    float* keypoints;
+    findScaleSpaceExtrema(gpyr, dogpyr, keypoints);
 
-
-
-
-    //std::vector<CudaImage> pyr;
-    //buildPyramidNoStream(cuimg,pyr,nOctaves,nOctaveLayers);
 
     std::vector<double> sig(nOctaveLayers + 3);
     //init the size of the pyramid images which is nOctave*nLayer
@@ -112,7 +110,7 @@ int main()
         sig[i] = std::sqrt(sig_total*sig_total - sig_prev*sig_prev);
     }
 
-    computePerOctave(cuimg,sig,nOctaveLayers);
+    //computePerOctave(cuimg,sig,nOctaveLayers);
 //    float *d_data;
 //    safeCall(cudaMalloc(&d_data,1<<30));
 

@@ -56,5 +56,8 @@ if (BUILD_TEST)
   add_executable(cuda_main cuda_main.cpp)
   target_link_libraries(cuda_main ${LABRARY})
 
+  add_executable(test_scaledown test_scaledown.cpp)
+  target_link_libraries(test_scaledown ${LABRARY})
+
 endif (BUILD_TEST)
 

@@ -11,6 +11,9 @@ using namespace cv;
 
 
 #define SHOW
+//#define SHOW_GAUSSIANPYRAMID
+//#define SHOW_DOGPYRAMID
+#define SHOW_KEYPOINT
 
 // default width of descriptor histogram array
 static const int SIFT_DESCR_WIDTH = 4;
@@ -53,7 +56,7 @@ int nOctaveLayers = 3;
 double contrastThreshold;
 double edgeThreshold;
 double sigma = 1.6;
-
+unsigned int maxPoints = 2000;
 
 
 cv::Mat cv::getGaussianKernel( int n, double sigma, int ktype );
@@ -75,5 +78,14 @@ void createInitialImage(const Mat &src, CudaImage &base, float sigma, bool doubl
 
 extern "C"
 void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOctaves);
+
+extern "C"
+double ScaleDown(CudaImage &res, CudaImage &src, float variance);
+
+extern "C"
+void buildDoGPyramid(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr );
+
+extern "C"
+void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, float* keypoints);
 
 #endif
