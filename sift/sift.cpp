@@ -570,7 +570,7 @@ static bool adjustLocalExtrema( const std::vector<Mat>& dog_pyr, KeyPoint& kpt, 
         Matx33f H(dxx, dxy, dxs,
                   dxy, dyy, dys,
                   dxs, dys, dss);
-
+        //AX=B,X = (A^-1)B  A = H , B=dD
         Vec3f X = H.solve(dD, DECOMP_LU);
 
         xi = -X[2];
@@ -588,6 +588,9 @@ static bool adjustLocalExtrema( const std::vector<Mat>& dog_pyr, KeyPoint& kpt, 
         c += cvRound(xc);
         r += cvRound(xr);
         layer += cvRound(xi);
+//        std::cout<<" x : "<<xc <<" y : "<< xr <<" s : "<<xi <<std::endl;
+//        std::cout<<"--x : "<<cvRound(xc) <<" y : "<< cvRound(xr) <<" s : "<<cvRound(xi) <<std::endl;
+
 
         if( layer < 1 || layer > nOctaveLayers ||
             c < SIFT_IMG_BORDER || c >= img.cols - SIFT_IMG_BORDER  ||

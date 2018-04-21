@@ -51,13 +51,15 @@ static const float SIFT_DESCR_MAG_THR = 0.2f;
 // factor used to convert floating-point descriptor to unsigned char
 static const float SIFT_INT_DESCR_FCTR = 512.f;
 
+static const int SIFT_FIXPT_SCALE = 1;
+
 //the value of static value
 int nOctaveLayers = 3;
-double contrastThreshold;
-double edgeThreshold;
+double contrastThreshold = 0.04;
+double edgeThreshold = 10;
 double sigma = 1.6;
 unsigned int maxPoints = 2000;
-
+static const unsigned KeyPoints_size = 5;
 
 cv::Mat cv::getGaussianKernel( int n, double sigma, int ktype );
 

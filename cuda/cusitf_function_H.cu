@@ -409,28 +409,25 @@ __global__ void findScaleSpaceExtrema(float *prev,float *img,float *next,float *
 }
 
 
-__global__ void findScaleSpaceExtrema(float *d_point,int i, int width ,int pitch ,int height){
+__global__ void findScaleSpaceExtrema(float *d_point,int s, int width ,int pitch ,int height,const int threshold,const int nOctaveLayers,const int maxNum){
 
     int x = blockIdx.x*blockDim.x+threadIdx.x;
     int y = blockIdx.y*blockDim.y+threadIdx.y;
-//    float *ptr = pd[3];
-//    ptr[y*1152+x] += 200;
-    const int threshold = int(0.5 * 0.04 / 3 * 255);
-//    const float *img = pd[i];
-//    const float *prev = pd[i-1];
-//    const float *next = pd[i+1];
 
-    if(y > height - 1 || x > width - 1)
+    //avoid extract the unstable border points
+    if(y >= height - SIFT_IMG_BORDER || x >= width - SIFT_IMG_BORDER || x<SIFT_IMG_BORDER || y<SIFT_IMG_BORDER)
         return;
 
-    float *currptr = pd[i]  +y*pitch+x;
-    float *prevptr = pd[i-1]+y*pitch+x;
-    float *nextptr = pd[i+1]+y*pitch+x;
+    float *currptr = pd[s]  +y*pitch+x;
+    float *prevptr = pd[s-1]+y*pitch+x;
+    float *nextptr = pd[s+1]+y*pitch+x;
 
+
+    int o = s/(nOctaveLayers+2);
     float val = *currptr;
     int step = pitch;
     int c = 0;
-    if( std::abs(val) > threshold &&
+    if( abs(val) > threshold &&
        ((val > 0 && val >= currptr[c-1] && val >= currptr[c+1] &&
          val >= currptr[c-step-1] && val >= currptr[c-step] && val >= currptr[c-step+1] &&
          val >= currptr[c+step-1] && val >= currptr[c+step] && val >= currptr[c+step+1] &&
@@ -450,14 +447,141 @@ __global__ void findScaleSpaceExtrema(float *d_point,int i, int width ,int pitch
          val <= prevptr[c-step-1] && val <= prevptr[c-step] && val <= prevptr[c-step+1] &&
          val <= prevptr[c+step-1] && val <= prevptr[c+step] && val <= prevptr[c+step+1])))
     {
+        /*adjustLocalExtrema*/
+        const float img_scale = 1.f/(255*SIFT_FIXPT_SCALE);
+        const float deriv_scale = img_scale*0.5f;
+        const float second_deriv_scale = img_scale;
+        const float cross_deriv_scale = img_scale*0.25f;
+        float Vs=0, Vx=0, Vy=0, contr=0;
+        float dx,dy,ds,dxx,dyy,dxy;
+        int j = 0;
+        //get the x,y,s,Vs,Vx,Vy or return
+        for( ; j < SIFT_MAX_INTERP_STEPS; j++ )
+        {
+            currptr = pd[s]  +y*pitch+x;
+            prevptr = pd[s-1]+y*pitch+x;
+            nextptr = pd[s+1]+y*pitch+x;
+
+            //the first derivative of x,y and scale
+            dx = (currptr[1] - currptr[-1])*deriv_scale;
+            dy = (currptr[pitch] - currptr[-pitch])*deriv_scale;;
+            ds = (nextptr[0] - prevptr[0])*deriv_scale;
+            float v2 = currptr[0]*2;
+
+            //the second derivative of x,y,scale
+            dxx = (currptr[1] + currptr[-1] - v2)*second_deriv_scale;
+            dyy = (currptr[pitch] + currptr[-pitch] - v2)*second_deriv_scale;
+            float dss = (nextptr[0] + prevptr[0] - v2)*second_deriv_scale;
+            dxy = (currptr[pitch+1] - currptr[1-pitch] -
+                         currptr[-1+pitch] + currptr[-pitch-1])*cross_deriv_scale;
+            float dxs = (nextptr[1] - nextptr[-1] -
+                         prevptr[1] + prevptr[-1])*cross_deriv_scale;
+            float dys = (nextptr[pitch] - nextptr[-pitch] -
+                         prevptr[pitch] + prevptr[-pitch])*cross_deriv_scale;
+
+            //Algebraic cousin
+            float idxx = dyy*dss - dys*dys;
+            float idxy = dys*dxs - dxy*dss;
+            float idxs = dxy*dys - dyy*dxs;
+            //idet is the det,the matrix's determinant countdown
+            float idet = __fdividef(1.0f, idxx*dxx + idxy*dxy + idxs*dxs);
+            float idyy = dxx*dss - dxs*dxs;
+            float idys = dxy*dxs - dxx*dys;
+            float idss = dxx*dyy - dxy*dxy;
+            ////////////////////////
+            ///  A(dxx, dxy, dxs,
+            ///    dxy, dyy, dys,
+            ///    dxs, dys, dss);
+            ///
+            ///  A*(idxx, idxy, idxs,
+            ///     idxy, idyy, idys,
+            ///     idxs, idys, idss);
+            ///
+            ///  B(dx,dy,dz)
+            /////////////////////////
+            //dX = (A^-1)*B
+            float pdx = idet*(idxx*dx + idxy*dy + idxs*ds);
+            float pdy = idet*(idxy*dx + idyy*dy + idys*ds);
+            float pds = idet*(idxs*dx + idys*dy + idss*ds);
+
+
+            //???   why is -pdx not pdx
+            Vx = -pdx;
+            Vy = -pdy;
+            Vs = -pds;
+
+            //because of the judgment is before the updated value,so
+            //this iteration final get the x,y,s(intger) and the Vx,Vy,Vz(<0.5).
+            //The accurate extrema location is x+Vx,y+Vy.
+
+
+            if( abs(Vs) < 0.5f && abs(Vx) < 0.5f && abs(Vy) < 0.5f )
+                break;
+
+            //get nearest intger
+            x += int(Vx > 0 ? ( Vx + 0.5 ) : (Vx - 0.5));
+            y += int(Vy > 0 ? ( Vy + 0.5 ) : (Vy - 0.5));
+            s += int(Vs > 0 ? ( Vs + 0.5 ) : (Vs - 0.5));
+
+
+//            if( std::abs(Vs) > 1.0f || std::abs(Vx) >1.0f || std::abs(Vy) > 1.0f ){
+//             printf("*******  Vs : %f , Vx = %f , Vy = %f \n",Vs,Vx,Vy);
+//             printf("*******intger  Vs : %d , Vx = %d , Vy = %d \n",int(Vs > 0 ? ( Vs + 0.5 ) : (Vs - 0.5)),int(Vx > 0 ? ( Vx + 0.5 ) : (Vx - 0.5)),int(Vy > 0 ? ( Vy + 0.5 ) : (Vy - 0.5)));
+//            }
+
+            int layer = s - o*(nOctaveLayers+2);
+
+            //printf("scale : %d , laryer : %d , Vs: %f\n",s,layer,Vs);
+
+            if( layer < 1 || layer > nOctaveLayers ||
+                y < SIFT_IMG_BORDER || y >= height - SIFT_IMG_BORDER  ||
+                x < SIFT_IMG_BORDER || x >= width - SIFT_IMG_BORDER )
+                return;
+
+        }//for
+        if( j >= SIFT_MAX_INTERP_STEPS )
+            return;
+
+        //After the iterative,get the x,y,s,(Vx,Vy,Vs)(<0.5).
+
+        {
+//            currptr = pd[s]  +y*pitch+x;
+//            prevptr = pd[s-1]+y*pitch+x;
+//            nextptr = pd[s+1]+y*pitch+x;
+
+//            dx = (currptr[1] - currptr[-1])*deriv_scale;
+//            dy = (currptr[pitch] - currptr[-pitch])*deriv_scale;;
+//            ds = (nextptr[0] - prevptr[0])*deriv_scale;
+
+//            float v2 = currptr[0]*2;
+
+//            dxx = (currptr[1] + currptr[-1] - v2)*second_deriv_scale;
+//            dyy = (currptr[pitch] + currptr[-pitch] - v2)*second_deriv_scale;
+//            dxy = (currptr[pitch+1] - currptr[1-pitch] -
+//                         currptr[-1+pitch] + currptr[-pitch-1])*cross_deriv_scale;
+
+
+            //remove the small energy points which essily influenced by image noise
+            float t = dx*Vx + dy*Vy + ds*Vs;
+            contr = currptr[0]*img_scale + t * 0.5f;
+            if( abs( contr ) * nOctaveLayers < 0.04 )
+                return;
+
+            // principal curvatures are computed using the trace and det of Hessian
+            float tr = dxx + dyy;
+            float det = dxx*dyy-dxy*dxy;
+
+            if( det <= 0 || tr*tr*10 >= (10 + 1)*(10 + 1)*det )
+                return;
+        }
+
 
         unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
-        idx = (idx>=1000 ? 1000-1 : idx);
-        d_point[idx*2] = x;
-        d_point[idx*2+1] = y;
+        idx = (idx>maxNum ? maxNum-1 : idx);
+        d_point[idx*5] = (x + Vx)*(1 << o);
+        d_point[idx*5+1] = (y + Vy)*(1 << o);
 
-        printf("cnt : %d , x = %d , y = %d,asd: %f \n",idx,x,y,d_point[idx*2]);
-
+        //printf("cnt : %d , x = %f , y = %f \n",idx,d_point[idx*2],d_point[idx*2+1]);
     }
 
 
@@ -544,12 +668,6 @@ __global__ void ScaleDown(float *d_Result, float *d_Data, int width, int pitch, 
     __syncthreads();
   }
 }
-
-
-
-
-
-
 
 
 __global__ void test()
@@ -796,8 +914,10 @@ void buildDoGPyramid( std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogp
 void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, float* keypoints){
     int totPts = 0;
     safeCall(cudaMemcpyToSymbol(d_PointCounter, &totPts, sizeof(int)));
-    cudaMalloc(&keypoints,sizeof(float)*maxPoints*2);
+    cudaMalloc(&keypoints,sizeof(float)*maxPoints*KeyPoints_size);
 
+
+    const int threshold = cvFloor(0.5 * contrastThreshold / nOctaveLayers * 255 * SIFT_FIXPT_SCALE);
 
     float **h_pd = new float*[dogpyr.size()];
     for(int i = 0;i<dogpyr.size();i++)
@@ -818,7 +938,7 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
         for(int i = 0;i<nOctaveLayers;i++){
             int index = o*(nOctaveLayers+2)+i+1;
             dim3 Grid(iDivUp(dogpyr[index].pitch,Block.x),iDivUp(dogpyr[index].height,Block.y));
-            findScaleSpaceExtrema<<<Grid,Block>>>(keypoints,index,dogpyr[index].width,dogpyr[index].pitch,dogpyr[index].height);
+            findScaleSpaceExtrema<<<Grid,Block>>>(keypoints,index,dogpyr[index].width,dogpyr[index].pitch,dogpyr[index].height,threshold,nOctaveLayers,maxPoints);
             safeCall(cudaDeviceSynchronize());
         }
     }
@@ -846,14 +966,14 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
     printf("num : %d \n",num);
 
     float *h_points;
-    h_points = (float *)malloc(num*2*sizeof(float));
-    safeCall(cudaMemcpy(h_points,keypoints,num*2*sizeof(float),cudaMemcpyDeviceToHost));
+    h_points = (float *)malloc(num*KeyPoints_size*sizeof(float));
+    safeCall(cudaMemcpy(h_points,keypoints,num*KeyPoints_size*sizeof(float),cudaMemcpyDeviceToHost));
     std::vector<KeyPoint> keypointss;
     keypointss.resize(num);
     for(int i = 0;i<keypointss.size();++i)
     {
-        keypointss[i].pt.x =  h_points[i*2];
-        keypointss[i].pt.y =  h_points[i*2+1];
+        keypointss[i].pt.x =  h_points[i*KeyPoints_size];
+        keypointss[i].pt.y =  h_points[i*KeyPoints_size+1];
     }
 
     Mat kepoint;
@@ -970,7 +1090,7 @@ void computePerOctave(CudaImage& base, std::vector<double> &sig, int nOctaveLaye
     int pitch = Octave[0].pitch;
     int heigh = Octave[0].height;
 
-    findScaleSpaceExtrema<<<Grid,Block>>>(d_point,3,Octave[0].width,Octave[0].pitch,Octave[0].height);
+    //findScaleSpaceExtrema<<<Grid,Block>>>(d_point,3,Octave[0].width,Octave[0].pitch,Octave[0].height);
     safeCall(cudaDeviceSynchronize());
 
 

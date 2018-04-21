@@ -136,13 +136,14 @@ int main()
     f2d->compute(img_1, keypoints_1, descriptors_1);
 
     for(int i = 0;i<keypoints_1.size();++i){
-        keypoints_1[i].angle = 0;
-        keypoints_1[i].class_id = 0;
-        keypoints_1[i].octave = 0;
-        keypoints_1[i].response = 0;
-        keypoints_1[i].size = 0;
+//        keypoints_1[i].angle = 0;
+//        keypoints_1[i].class_id = 0;
+//        keypoints_1[i].octave = 0;
+//        keypoints_1[i].response = 0;
+//        keypoints_1[i].size = 0;
         //keypoints_1[i].pt.x = 0;
     }
+    std::cout<<"sift keypoints num :"<<keypoints_1.size()<<std::endl;
     Mat kepoint;
     drawKeypoints(img_1, keypoints_1,kepoint);
     cvNamedWindow("extract",CV_WINDOW_NORMAL);
