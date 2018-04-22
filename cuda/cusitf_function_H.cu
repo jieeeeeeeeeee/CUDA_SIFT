@@ -545,22 +545,6 @@ __global__ void findScaleSpaceExtrema(float *d_point,int s, int width ,int pitch
         //After the iterative,get the x,y,s,(Vx,Vy,Vs)(<0.5).
 
         {
-//            currptr = pd[s]  +y*pitch+x;
-//            prevptr = pd[s-1]+y*pitch+x;
-//            nextptr = pd[s+1]+y*pitch+x;
-
-//            dx = (currptr[1] - currptr[-1])*deriv_scale;
-//            dy = (currptr[pitch] - currptr[-pitch])*deriv_scale;;
-//            ds = (nextptr[0] - prevptr[0])*deriv_scale;
-
-//            float v2 = currptr[0]*2;
-
-//            dxx = (currptr[1] + currptr[-1] - v2)*second_deriv_scale;
-//            dyy = (currptr[pitch] + currptr[-pitch] - v2)*second_deriv_scale;
-//            dxy = (currptr[pitch+1] - currptr[1-pitch] -
-//                         currptr[-1+pitch] + currptr[-pitch-1])*cross_deriv_scale;
-
-
             //remove the small energy points which essily influenced by image noise
             float t = dx*Vx + dy*Vy + ds*Vs;
             contr = currptr[0]*img_scale + t * 0.5f;
@@ -575,7 +559,6 @@ __global__ void findScaleSpaceExtrema(float *d_point,int s, int width ,int pitch
                 return;
         }
 
-
         unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
         idx = (idx>maxNum ? maxNum-1 : idx);
         d_point[idx*5] = (x + Vx)*(1 << o);
@@ -583,8 +566,6 @@ __global__ void findScaleSpaceExtrema(float *d_point,int s, int width ,int pitch
 
         //printf("cnt : %d , x = %f , y = %f \n",idx,d_point[idx*2],d_point[idx*2+1]);
     }
-
-
 }
 
 // Scale down thread block width
@@ -963,7 +944,7 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
     int num = 0;
     safeCall(cudaMemcpyFromSymbol(&num, d_PointCounter, sizeof(int)));
     num = (num>maxPoints)? maxPoints:num;
-    printf("num : %d \n",num);
+    printf("my sift kepoints num : %d \n",num);
 
     float *h_points;
     h_points = (float *)malloc(num*KeyPoints_size*sizeof(float));
@@ -983,9 +964,9 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
     Mat gray;
     img_1.convertTo(gray,DataType<uchar>::type, 1, 0);
     drawKeypoints(gray,keypointss,kepoint);
-    //char *a ="../data/road.png";
-    //Mat img_1 = imread(a);
-    //drawKeypoints(img_1,keypoints,kepoint);
+//    char *a ="../data/road.png";
+//    Mat img_1 = imread(a);
+//    drawKeypoints(img_1,keypoints,kepoint);
 
     cvNamedWindow("extract_my",CV_WINDOW_NORMAL);
     imshow("extract_my", kepoint);
@@ -993,7 +974,6 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
 #endif
 
 }
-
 
 void displayOctave(std::vector<CudaImage> &Octave)
 {

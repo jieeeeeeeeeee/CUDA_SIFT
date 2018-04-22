@@ -110,6 +110,8 @@
 
 #define USE_MY_FUNCTIONS
 #ifdef USE_MY_FUNCTIONS
+#define USE_SCALEDOWN
+#define NODOUBLEIMAGE
 #include "../cuda/cudaImage.h"
 #include "../cuda/cusitf_function_H.h"
 #endif
@@ -324,9 +326,27 @@ void SIFT_Impl::buildGaussianPyramid( const Mat& base, std::vector<Mat>& pyr, in
             // base of new octave is halved image from end of previous octave
             else if( i == 0 )
             {
+#ifdef USE_SCALEDOWN
+                const Mat& src = pyr[(o-1)*(nOctaveLayers + 3) + nOctaveLayers];
+                CudaImage result;
+                CudaImage cuimg;
+                cuimg.Allocate(src.cols,src.rows,iAlignUp(src.cols, 128),false,NULL,(float*)src.data);
+                cuimg.Download();
+                result.Allocate(src.cols/2,src.rows/2,iAlignUp(src.cols/2, 128),false);
+                ScaleDown(result, cuimg, 0.5f);
+                //Mat dis(base.height,base.width,CV_32F);
+                dst.create(result.height,result.width,src.type());
+                safeCall(cudaMemcpy2D(dst.data,result.width*sizeof(float),result.d_data,result.pitch*sizeof(float),result.width*sizeof(float),(size_t) result.height,cudaMemcpyDeviceToHost));
+//                Mat gray;
+//                dst.convertTo(gray,DataType<uchar>::type, 1, 0);
+//                cvNamedWindow("ss",CV_WINDOW_NORMAL);
+//                imshow("ss",gray);
+//                waitKey(0);
+#else
                 const Mat& src = pyr[(o-1)*(nOctaveLayers + 3) + nOctaveLayers];
                 resize(src, dst, Size(src.cols/2, src.rows/2),
                        0, 0, INTER_NEAREST);
+#endif
             }
             else
             {
@@ -339,11 +359,11 @@ void SIFT_Impl::buildGaussianPyramid( const Mat& base, std::vector<Mat>& pyr, in
                 cuGaussianBlur(cuimg,sig[i]);
                 dst.create(src.size(),src.type());
                 safeCall(cudaMemcpy2D(dst.data,cuimg.width*sizeof(float),cuimg.d_data,cuimg.pitch*sizeof(float),cuimg.width*sizeof(float),(size_t) cuimg.height,cudaMemcpyDeviceToHost));
-        //        Mat gray;
-        //        gray_fpt.convertTo(gray,DataType<uchar>::type, 1, 0);
-        //        cvNamedWindow("ss",CV_WINDOW_NORMAL);
-        //        imshow("ss",gray);
-        //        waitKey(0);
+//                Mat gray;
+//                dst.convertTo(gray,DataType<uchar>::type, 1, 0);
+//                cvNamedWindow("ss",CV_WINDOW_NORMAL);
+//                imshow("ss",gray);
+//                waitKey(0);
 #else
                 GaussianBlur(src, dst, Size(), sig[i], sig[i]);
 #endif
@@ -1180,7 +1200,7 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
                       OutputArray _descriptors,
                       bool useProvidedKeypoints)
 {
-#ifdef USE_MY_FUNCTIONS
+#ifdef NODOUBLEIMAGE
     int firstOctave = 0, actualNOctaves = 0, actualNLayers = 0;
 #else
     int firstOctave = -1, actualNOctaves = 0, actualNLayers = 0;
@@ -1220,8 +1240,11 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
 
     //the number of the Octaves which can calculate by formula "|log2 min(X,Y) - 2|"
     //cvRound Rounds floating-point number to the nearest integer.
+#ifdef USE_MY_FUNCTIONS
     int nOctaves = actualNOctaves > 0 ? actualNOctaves : cvRound(std::log( (double)std::min( base.cols, base.rows ) ) / std::log(2.) - 2) - firstOctave;
-
+#else
+    int nOctaves = actualNOctaves > 0 ? actualNOctaves : cvRound(std::log( (double)std::min( base.cols, base.rows ) ) / std::log(2.) - 2) - firstOctave;
+#endif
     //double t, tf = getTickFrequency();
     //t = (double)getTickCount();
     buildGaussianPyramid(base, gpyr, nOctaves);

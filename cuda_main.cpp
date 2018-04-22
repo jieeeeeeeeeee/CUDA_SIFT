@@ -87,7 +87,7 @@ int main()
 #endif
 
     int nOctaveLayers = 3;
-    int nOctaves = cvRound(std::log( (double)std::min( cuimg.width, cuimg.height ) ) / std::log(2.) - 3) - firstOctave;
+    int nOctaves = cvRound(std::log( (double)std::min( cuimg.width, cuimg.height ) ) / std::log(2.) - 2) - firstOctave;
 
     std::vector<CudaImage> gpyr,dogpyr;
     buildGaussianPyramid(base, gpyr, nOctaves);
