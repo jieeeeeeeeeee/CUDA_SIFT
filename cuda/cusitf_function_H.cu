@@ -564,6 +564,11 @@ __global__ void findScaleSpaceExtrema(float *d_point,int s, int width ,int pitch
         d_point[idx*5] = (x + Vx)*(1 << o);
         d_point[idx*5+1] = (y + Vy)*(1 << o);
 
+//        unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
+//        idx = (idx>maxNum ? maxNum-1 : idx);
+//        d_point[idx*5] = (x + 0)*(1 << 0);
+//        d_point[idx*5+1] = (y + 0)*(1 << 0);
+
         //printf("cnt : %d , x = %f , y = %f \n",idx,d_point[idx*2],d_point[idx*2+1]);
     }
 }
@@ -658,6 +663,15 @@ __global__ void test()
 //    printf("cnt : %d \n",d_PointCounter[0]);
 }
 
+void testDiffimage(float *d_Octave0,float *d_Octave1,float *d_diffOctave,int pitch,int height){
+    dim3 Block(32,8);
+    dim3 Grid(iDivUp(pitch,Block.x),iDivUp(height,Block.y));
+
+    differenceImg<<<Grid,Block>>>(d_Octave0,d_Octave1,d_diffOctave,pitch,height);
+    safeCall(cudaDeviceSynchronize());
+
+
+}
 
 //input cudaImage and output cudaImage which d_data has been smooth
 void cuGaussianBlur(CudaImage &cuImg,float sigma)
@@ -897,10 +911,13 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
     safeCall(cudaMemcpyToSymbol(d_PointCounter, &totPts, sizeof(int)));
     cudaMalloc(&keypoints,sizeof(float)*maxPoints*KeyPoints_size);
 
-
     const int threshold = cvFloor(0.5 * contrastThreshold / nOctaveLayers * 255 * SIFT_FIXPT_SCALE);
 
+    //std::cout<<"my threshold = "<<threshold<<std::endl;
+#ifdef FIND_DOGERRORTEST
+#else
     float **h_pd = new float*[dogpyr.size()];
+#endif
     for(int i = 0;i<dogpyr.size();i++)
         h_pd[i] = dogpyr[i].d_data;
     safeCall(cudaMemcpyToSymbol(pd, h_pd, sizeof(float *)*dogpyr.size()));

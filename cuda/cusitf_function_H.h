@@ -14,6 +14,9 @@ using namespace cv;
 //#define SHOW_GAUSSIANPYRAMID
 //#define SHOW_DOGPYRAMID
 #define SHOW_KEYPOINT
+//#define FIND_DOGERRORTEST
+//#define TEST_FIRST_OCTAVE
+
 
 // default width of descriptor histogram array
 static const int SIFT_DESCR_WIDTH = 4;
@@ -89,5 +92,13 @@ void buildDoGPyramid(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpy
 
 extern "C"
 void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, float* keypoints);
+
+extern "C"
+void testDiffimage(float *d_Octave0,float *d_Octave1,float *d_diffOctave,int pitch,int height);
+
+#ifdef FIND_DOGERRORTEST
+    CudaImage base;
+float **h_pd = new float*[5];
+#endif
 
 #endif

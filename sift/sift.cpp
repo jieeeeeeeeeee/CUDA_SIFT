@@ -112,6 +112,7 @@
 #ifdef USE_MY_FUNCTIONS
 #define USE_SCALEDOWN
 #define NODOUBLEIMAGE
+#define USE_MY_DIFFIMAGE
 #include "../cuda/cudaImage.h"
 #include "../cuda/cusitf_function_H.h"
 #endif
@@ -284,6 +285,21 @@ static Mat createInitialImage( const Mat& img, bool doubleImageSize, float sigma
         cuimg.Download();
         cuGaussianBlur(cuimg,sig_diff);
         safeCall(cudaMemcpy2D(gray_fpt.data,cuimg.width*sizeof(float),cuimg.d_data,cuimg.pitch*sizeof(float),cuimg.width*sizeof(float),(size_t) cuimg.height,cudaMemcpyDeviceToHost));
+
+//        Mat gray1,dst;
+//        dst.create(gray_fpt.rows,gray_fpt.cols,gray_fpt.type());
+//        safeCall(cudaMemcpy2D(dst.data,cuimg.width*sizeof(float),base.d_data,cuimg.pitch*sizeof(float),cuimg.width*sizeof(float),(size_t) cuimg.height,cudaMemcpyDeviceToHost));
+
+//        for(int ii = 0;ii<dst.rows;ii++)
+//        {
+//            float *p = dst.ptr<float>(ii);
+//            float *q = gray_fpt.ptr<float>(ii);
+//            //float *d = residualMat.ptr<uchar>(i);
+//            for(int j = 0;j<dst.cols;j++){
+//                q[j] = p[j];
+//            }
+//        }
+
 //        Mat gray;
 //        gray_fpt.convertTo(gray,DataType<uchar>::type, 1, 0);
 //        cvNamedWindow("ss",CV_WINDOW_NORMAL);
@@ -397,7 +413,22 @@ public:
             const Mat& src1 = gpyr[o*(nOctaveLayers + 3) + i];
             const Mat& src2 = gpyr[o*(nOctaveLayers + 3) + i + 1];
             Mat& dst = dogpyr[o*(nOctaveLayers + 2) + i];
+#ifdef USE_MY_DIFFIMAGE
+            CudaImage cuimg,cuimg1,diff;
+            cuimg.Allocate(src1.cols,src1.rows,iAlignUp(src1.cols, 128),false,NULL,(float*)src1.data);
+            cuimg.Download();
+            cuimg1.Allocate(src1.cols,src1.rows,iAlignUp(src1.cols, 128),false,NULL,(float*)src2.data);
+            cuimg1.Download();
+            //diff.Allocate(dst.cols,dst.rows,iAlignUp(dst.cols, 128),false,NULL,(float*)dst.data);
+            //diff.Download();
+            dst.create(src1.size(),src1.type());
+            diff.Allocate(src1.cols,src1.rows,iAlignUp(src1.cols, 128),false);
+            testDiffimage(cuimg.d_data,cuimg1.d_data,diff.d_data,diff.pitch,diff.height);
+            safeCall(cudaMemcpy2D(dst.data,cuimg.width*sizeof(float),diff.d_data,cuimg.pitch*sizeof(float),cuimg.width*sizeof(float),(size_t) cuimg.height,cudaMemcpyDeviceToHost));
+
+#else
             subtract(src2, src1, dst, noArray(), DataType<sift_wt>::type);
+#endif
         }
     }
 
@@ -413,6 +444,51 @@ void SIFT_Impl::buildDoGPyramid( const std::vector<Mat>& gpyr, std::vector<Mat>&
     dogpyr.resize( nOctaves*(nOctaveLayers + 2) );
 
     parallel_for_(Range(0, nOctaves * (nOctaveLayers + 2)), buildDoGPyramidComputer(nOctaveLayers, gpyr, dogpyr));
+#ifdef FIND_DOGERRORTEST
+    for(int i = 0 ;i<dogpyr.size();i++)
+    {
+        Mat gray,gray1;
+        Mat dst;
+        dst.create(dogpyr[i].rows,dogpyr[i].cols,CV_32F);
+        safeCall(cudaMemcpy2D(dst.data,dogpyr[i].cols*sizeof(float),h_pd[i],iAlignUp(dogpyr[i].cols,128)*sizeof(float),dogpyr[i].cols*sizeof(float),(size_t) dogpyr[i].rows,cudaMemcpyDeviceToHost));
+
+//        cvNamedWindow("ssq",CV_WINDOW_NORMAL);
+//        imshow("ssq",gray);
+//        waitKey(0);
+
+        for(int ii = 0;ii<dst.rows;ii++)
+        {
+            float *p = dst.ptr<float>(ii);
+            float *q = dogpyr[i].ptr<float>(ii);
+            //float *d = residualMat.ptr<uchar>(i);
+            for(int j = 0;j<dst.cols;j++){
+                //q[j] = p[j];
+            }
+        }
+        dogpyr[i].convertTo(gray1,DataType<uchar>::type, 10, 150);
+        dst.convertTo(gray,DataType<uchar>::type, 10, 150);
+
+//        Mat residualMat(dst.size(),CV_8U);
+
+//        for(int i = 0;i<dst.rows;i++)
+//        {
+//            uchar *p = gray.ptr<uchar>(i);
+//            uchar *q = gray1.ptr<uchar>(i);
+//            uchar *d = residualMat.ptr<uchar>(i);
+//            for(int j = 0;j<dst.cols;j++){
+//                d[j] = abs(p[j] - q[j]) * 30;
+//            }
+//        }
+//        cvNamedWindow("str",CV_WINDOW_NORMAL);
+//        imshow("str",residualMat);
+//        waitKey(0);
+
+
+        //std::cout<<<<std::endl;
+    }
+#endif
+
+
 }
 
 // Computes a gradient orientation histogram at a specified pixel
@@ -655,6 +731,12 @@ static bool adjustLocalExtrema( const std::vector<Mat>& dog_pyr, KeyPoint& kpt, 
     kpt.size = sigma*powf(2.f, (layer + xi) / nOctaveLayers)*(1 << octv)*2;
     kpt.response = std::abs(contr);
 
+//    kpt.pt.x = 400 * (1 << octv);
+//    kpt.pt.y = 500 * (1 << octv);
+//    kpt.octave = 1;
+//    kpt.size = 2;
+//    kpt.response = 4;
+
     return true;
 }
 
@@ -790,6 +872,7 @@ void SIFT_Impl::findScaleSpaceExtrema( const std::vector<Mat>& gauss_pyr, const 
 {
     const int nOctaves = (int)gauss_pyr.size()/(nOctaveLayers + 3);
     const int threshold = cvFloor(0.5 * contrastThreshold / nOctaveLayers * 255 * SIFT_FIXPT_SCALE);
+    //std::cout<<"sift threshold = "<<threshold<<std::endl;
 
     //TLS threads local Storage
     keypoints.clear();
@@ -1213,7 +1296,7 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
     if( !mask.empty() && mask.type() != CV_8UC1 )
         CV_Error( Error::StsBadArg, "mask has incorrect type (!=CV_8UC1)" );
 
-    //no need
+    //no need for detection using for desription.
     if( useProvidedKeypoints )
     {
         firstOctave = 0;
@@ -1240,8 +1323,8 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
 
     //the number of the Octaves which can calculate by formula "|log2 min(X,Y) - 2|"
     //cvRound Rounds floating-point number to the nearest integer.
-#ifdef USE_MY_FUNCTIONS
-    int nOctaves = actualNOctaves > 0 ? actualNOctaves : cvRound(std::log( (double)std::min( base.cols, base.rows ) ) / std::log(2.) - 2) - firstOctave;
+#ifdef TEST_FIRST_OCTAVE
+    int nOctaves = actualNOctaves > 0 ? actualNOctaves : cvRound(std::log( (double)std::min( base.cols, base.rows ) ) / std::log(2.) - 8) - firstOctave;
 #else
     int nOctaves = actualNOctaves > 0 ? actualNOctaves : cvRound(std::log( (double)std::min( base.cols, base.rows ) ) / std::log(2.) - 2) - firstOctave;
 #endif

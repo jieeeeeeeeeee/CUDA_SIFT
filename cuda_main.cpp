@@ -41,7 +41,7 @@ int main()
     cv::Mat src;
     //src = imread("../data/100_7101.JPG",0);
     //src = imread("../data/lena.png",0);
-    src = imread(a,0);
+    src = imread(a);
     //src = imread("../data/DSC04034.JPG",0);
     int width = src.cols;
     int height = src.rows;
@@ -73,8 +73,10 @@ int main()
 
     //nodoublesize
     int firstOctave = 0, actualNLayers = 0;
-
+#ifdef FIND_DOGERRORTEST
+#else
     CudaImage base;
+#endif
     createInitialImage(src,base,(float)1.6,firstOctave<0);
 #ifdef IMAGE_SHOW
     Mat dis(base.height,base.width,CV_32F);
@@ -87,8 +89,11 @@ int main()
 #endif
 
     int nOctaveLayers = 3;
+#ifdef TEST_FIRST_OCTAVE
+    int nOctaves = cvRound(std::log( (double)std::min( cuimg.width, cuimg.height ) ) / std::log(2.) - 8) - firstOctave;
+#else
     int nOctaves = cvRound(std::log( (double)std::min( cuimg.width, cuimg.height ) ) / std::log(2.) - 2) - firstOctave;
-
+#endif
     std::vector<CudaImage> gpyr,dogpyr;
     buildGaussianPyramid(base, gpyr, nOctaves);
     buildDoGPyramid(gpyr, dogpyr);
@@ -97,18 +102,18 @@ int main()
     findScaleSpaceExtrema(gpyr, dogpyr, keypoints);
 
 
-    std::vector<double> sig(nOctaveLayers + 3);
-    //init the size of the pyramid images which is nOctave*nLayer
+//    std::vector<double> sig(nOctaveLayers + 3);
+//    //init the size of the pyramid images which is nOctave*nLayer
 
-    float sigma = 1.6;
-    sig[0] = sigma;
-    double k = std::pow( 2., 1. / nOctaveLayers );
-    for( int i = 1; i < nOctaveLayers + 3; i++ )
-    {
-        double sig_prev = std::pow(k, (double)(i-1))*sigma;
-        double sig_total = sig_prev*k;
-        sig[i] = std::sqrt(sig_total*sig_total - sig_prev*sig_prev);
-    }
+//    float sigma = 1.6;
+//    sig[0] = sigma;
+//    double k = std::pow( 2., 1. / nOctaveLayers );
+//    for( int i = 1; i < nOctaveLayers + 3; i++ )
+//    {
+//        double sig_prev = std::pow(k, (double)(i-1))*sigma;
+//        double sig_total = sig_prev*k;
+//        sig[i] = std::sqrt(sig_total*sig_total - sig_prev*sig_prev);
+//    }
 
     //computePerOctave(cuimg,sig,nOctaveLayers);
 //    float *d_data;
