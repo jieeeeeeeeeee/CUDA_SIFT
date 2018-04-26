@@ -21,7 +21,7 @@ SET(CMAKE_BUILD_TYPE "Debug")
 message(STATUS "This is src file:${CURRENT_SOURCES}")
 
 
-
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 cuda_add_library(cusift SHARED ${CURRENT_HEADERS} ${CURRENT_SOURCES})
 #target_link_libraries(cusift ${CUDA_LIBRARIES})

@@ -495,15 +495,23 @@ void SIFT_Impl::buildDoGPyramid( const std::vector<Mat>& gpyr, std::vector<Mat>&
 static float calcOrientationHist( const Mat& img, Point pt, int radius,
                                   float sigma, float* hist, int n )
 {
+    //the procress of all point range, a square space.
     int i, j, k, len = (radius*2+1)*(radius*2+1);
-
+    //garuss smooth's coefficient
     float expf_scale = -1.f/(2.f * sigma * sigma);
+    //n = 36
     AutoBuffer<float> buf(len*4 + n+4);
+    //the buf is a memory storage the temporary data.
+    //The frist len is the Mag('fu zhi'),second is the Ori,third is the gauss weight(len+2),
+    //the forth is temphist,(n + 2)
     float *X = buf, *Y = X + len, *Mag = X, *Ori = Y + len, *W = Ori + len;
+    //gradient direction histogarm
     float* temphist = W + len + 2;
 
     for( i = 0; i < n; i++ )
         temphist[i] = 0.f;
+
+    //printf("pixel : %f \n",img.at<sift_wt>(pt.y,pt.x));
 
     for( i = -radius, k = 0; i <= radius; i++ )
     {
@@ -517,6 +525,7 @@ static float calcOrientationHist( const Mat& img, Point pt, int radius,
                 continue;
 
             float dx = (float)(img.at<sift_wt>(y, x+1) - img.at<sift_wt>(y, x-1));
+            //(y-1) - (y+1) because of the positive direction.
             float dy = (float)(img.at<sift_wt>(y-1, x) - img.at<sift_wt>(y+1, x));
 
             X[k] = dx; Y[k] = dy; W[k] = (i*i + j*j)*expf_scale;
@@ -570,7 +579,10 @@ static float calcOrientationHist( const Mat& img, Point pt, int radius,
         if( bin < 0 )
             bin += n;
         temphist[bin] += W[k]*Mag[k];
+//        if(k == 0)
+//        printf("temphist[%d]: %f , Mag[k] : %f , Y[k] :  %f \n",bin,temphist[bin],Mag[k],Y[k]);
     }
+
 
     // smooth the histogram
     temphist[-1] = temphist[n-1];
@@ -620,7 +632,7 @@ static float calcOrientationHist( const Mat& img, Point pt, int radius,
     float maxval = hist[0];
     for( i = 1; i < n; i++ )
         maxval = std::max(maxval, hist[i]);
-
+    //printf("omax : %f \n",maxval);
     return maxval;
 }
 
@@ -725,18 +737,22 @@ static bool adjustLocalExtrema( const std::vector<Mat>& dog_pyr, KeyPoint& kpt, 
             return false;
     }
 
+    //octv is the octave index begin from 0
+    //why is (1<<octv),if has the doubleImgage will it work?
     kpt.pt.x = (c + xc) * (1 << octv);
     kpt.pt.y = (r + xr) * (1 << octv);
     kpt.octave = octv + (layer << 8) + (cvRound((xi + 0.5)*255) << 16);
+    //why '*2'
     kpt.size = sigma*powf(2.f, (layer + xi) / nOctaveLayers)*(1 << octv)*2;
     kpt.response = std::abs(contr);
 
+    //kpt.response = kpt.size;
 //    kpt.pt.x = 400 * (1 << octv);
 //    kpt.pt.y = 500 * (1 << octv);
 //    kpt.octave = 1;
 //    kpt.size = 2;
 //    kpt.response = 4;
-
+    //printf("octave : %f \n ",xi);
     return true;
 }
 
@@ -818,17 +834,22 @@ public:
                      val <= prevptr[c-step-1] && val <= prevptr[c-step] && val <= prevptr[c-step+1] &&
                      val <= prevptr[c+step-1] && val <= prevptr[c+step] && val <= prevptr[c+step+1])))
                 {
+                    //i or layer is the index in dog.
                     int r1 = r, c1 = c, layer = i;
                     if( !adjustLocalExtrema(dog_pyr, kpt, o, layer, r1, c1,
                                             nOctaveLayers, (float)contrastThreshold,
                                             (float)edgeThreshold, (float)sigma) )
                         continue;
+                    //simga*2^s/S,the simga the simga relative to the octave.
                     float scl_octv = kpt.size*0.5f/(1 << o);
+                    //the radius is the 3*1.5*simga,the first parameter is the img in
+                    //gpyr which index is the 1~4
                     float omax = calcOrientationHist(gauss_pyr[o*(nOctaveLayers+3) + layer],
                                                      Point(c1, r1),
                                                      cvRound(SIFT_ORI_RADIUS * scl_octv),
                                                      SIFT_ORI_SIG_FCTR * scl_octv,
                                                      hist, n);
+
                     float mag_thr = (float)(omax * SIFT_ORI_PEAK_RATIO);
                     for( int j = 0; j < n; j++ )
                     {

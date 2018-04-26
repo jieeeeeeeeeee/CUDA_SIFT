@@ -17,17 +17,14 @@
 #include"sift/sift.h"
 #endif
 
+
+
 //#define IMAGE_SHOW
 using namespace cv;
 using namespace std;
 
-void detectAndCompute(InputArray _image, InputArray _mask,
-                      std::vector<KeyPoint>& keypoints,
-                      OutputArray _descriptors,
-                      bool useProvidedKeypoints)
-{
 
-}
+
 #define TIME
 
 
@@ -35,9 +32,10 @@ int main()
 {
     std::cout<<"Hello World !"<<std::endl;
 
-    char *a ="../data/road.png";
+    //char *a ="../data/road.png";
     //char *a ="../data/lena.png";
     //char *a ="../data/100_7101.JPG";
+    char *a ="../data/DSC04034.JPG";
     cv::Mat src;
     //src = imread("../data/100_7101.JPG",0);
     //src = imread("../data/lena.png",0);
@@ -99,6 +97,7 @@ int main()
     buildDoGPyramid(gpyr, dogpyr);
 
     float* keypoints;
+
     findScaleSpaceExtrema(gpyr, dogpyr, keypoints);
 
 
@@ -150,14 +149,32 @@ int main()
     }
     std::cout<<"sift keypoints num :"<<keypoints_1.size()<<std::endl;
     Mat kepoint;
-    drawKeypoints(img_1, keypoints_1,kepoint);
+    drawKeypoints(img_1, keypoints_1,kepoint,cv::Scalar::all(-1),4);
     cvNamedWindow("extract",CV_WINDOW_NORMAL);
     imshow("extract", kepoint);
     //等待任意按键按下
     waitKey(0);
 
+
+#ifdef COMPARE_VALUE
+//    vector<KeyPoint> k;
+//    vector<KeyPoint> b;
+//    std::sort(k.begin(),k.end(),comparex);
+    sort(keypoints_1.begin(),keypoints_1.end(),sortx);
+    int unique_nums;
+    unique_nums = std::unique(keypoints_1.begin(),keypoints_1.end(),uniquex) - keypoints_1.begin();
+    for(int i = 0;i < unique_nums;i++)
+        std::cout<<keypoints_1[i].response<<" ";
+    std::cout<<unique_nums<<std::endl;
+
+#endif
+
+
+
     return 0;
 }
+
+
 
 
 //#include <opencv2/imgcodecs.hpp>

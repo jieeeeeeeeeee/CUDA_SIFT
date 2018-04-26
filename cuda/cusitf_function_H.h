@@ -18,6 +18,34 @@ using namespace cv;
 //#define TEST_FIRST_OCTAVE
 
 
+//#define COMPARE_VALUE
+
+#ifdef COMPARE_VALUE
+#include <algorithm>
+#endif
+
+#ifdef COMPARE_VALUE
+bool uniquex(const KeyPoint& a,const KeyPoint& b)
+{
+    bool x;
+    if(a.response == b.response)
+        x = true;
+    else
+        x = false;
+    return x;
+}
+bool sortx(const KeyPoint& a,const KeyPoint& b)
+{
+    bool x;
+    if(a.response < b.response)
+        x = true;
+    else
+        x = false;
+    return x;
+}
+#endif
+
+
 // default width of descriptor histogram array
 static const int SIFT_DESCR_WIDTH = 4;
 
@@ -61,8 +89,10 @@ int nOctaveLayers = 3;
 double contrastThreshold = 0.04;
 double edgeThreshold = 10;
 double sigma = 1.6;
-unsigned int maxPoints = 2000;
-static const unsigned KeyPoints_size = 5;
+unsigned int maxPoints = 6000;
+
+static const unsigned KeyPoints_size = 6;
+#define KEYPOINTS_SIZE 6
 
 cv::Mat cv::getGaussianKernel( int n, double sigma, int ktype );
 
