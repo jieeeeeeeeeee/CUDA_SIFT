@@ -17,6 +17,7 @@ using namespace cv;
 //#define FIND_DOGERRORTEST
 //#define TEST_FIRST_OCTAVE
 
+//#define NODOUBLEIMAGE
 
 //#define COMPARE_VALUE
 
@@ -121,7 +122,7 @@ extern "C"
 void buildDoGPyramid(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr );
 
 extern "C"
-void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, float* keypoints);
+void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, float* h_keypoints);
 
 extern "C"
 void testDiffimage(float *d_Octave0,float *d_Octave1,float *d_diffOctave,int pitch,int height);
@@ -130,5 +131,20 @@ void testDiffimage(float *d_Octave0,float *d_Octave1,float *d_diffOctave,int pit
     CudaImage base;
 float **h_pd = new float*[5];
 #endif
+
+//device
+
+#define __MAXSIZECON 32*2+1
+__constant__ float coeffGaussKernel[__MAXSIZECON];
+__device__ unsigned int d_PointCounter[1];
+//choose 55 suport 16384 pixel size image (log2(16384) - 2)*5
+__device__ float *pd[60];
+//choose 66 suport 16384 pixel size image (log2(16384) - 2)*6
+__device__ float *pgpyr[72];
+
+
+
+
+
 
 #endif

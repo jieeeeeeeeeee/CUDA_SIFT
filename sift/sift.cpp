@@ -111,7 +111,7 @@
 #define USE_MY_FUNCTIONS
 #ifdef USE_MY_FUNCTIONS
 #define USE_SCALEDOWN
-#define NODOUBLEIMAGE
+//#define NODOUBLEIMAGE
 #define USE_MY_DIFFIMAGE
 #include "../cuda/cudaImage.h"
 #include "../cuda/cusitf_function_H.h"
@@ -1367,6 +1367,7 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
             KeyPointsFilter::retainBest(keypoints, nfeatures);
         //t = (double)getTickCount() - t;
         //printf("keypoint detection time: %g\n", t*1000./tf);
+
 
         if( firstOctave < 0 )
             for( size_t i = 0; i < keypoints.size(); i++ )

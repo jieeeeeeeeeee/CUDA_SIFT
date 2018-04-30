@@ -7,7 +7,7 @@
 #include <opencv2/cudafilters.hpp>
 #include <cuda.h>
 
-#define USE_MY_SIFT
+#define USE_MY_SIFTs
 
 
 #ifdef USE_SIFT OR USE_SURF
@@ -35,7 +35,8 @@ int main()
     //char *a ="../data/road.png";
     //char *a ="../data/lena.png";
     //char *a ="../data/100_7101.JPG";
-    char *a ="../data/DSC04034.JPG";
+    //char *a ="../data/DSC04034.JPG";
+    char *a ="../data/1080.jpg";
     cv::Mat src;
     //src = imread("../data/100_7101.JPG",0);
     //src = imread("../data/lena.png",0);
@@ -51,7 +52,6 @@ int main()
 
     Mat tmp;
     src.convertTo(tmp, CV_32FC1);
-
 
     //warming up time
 #ifdef TIME
@@ -70,7 +70,12 @@ int main()
 
 
     //nodoublesize
-    int firstOctave = 0, actualNLayers = 0;
+#ifdef NODOUBLEIMAGE
+    int firstOctave = 0, actualNOctaves = 0, actualNLayers = 0;
+#else
+    int firstOctave = -1, actualNOctaves = 0, actualNLayers = 0;
+#endif
+
 #ifdef FIND_DOGERRORTEST
 #else
     CudaImage base;

@@ -3,8 +3,8 @@ project(cusift)
 
 find_package(CUDA)
 
-#set(CUDA_NVCC_FLAGS -arch=compute_60)
-set(CUDA_NVCC_FLAGS -arch=compute_60;-G;-g)
+set(CUDA_NVCC_FLAGS -arch=compute_60)
+#set(CUDA_NVCC_FLAGS -arch=compute_60;-G;-g)
 
 file(GLOB_RECURSE CURRENT_HEADERS  *.h *.hpp *.cuh)
 file(GLOB CURRENT_SOURCES  *.cpp *.cu)

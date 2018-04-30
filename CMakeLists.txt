@@ -59,5 +59,8 @@ if (BUILD_TEST)
   add_executable(test_scaledown test_scaledown.cpp)
   target_link_libraries(test_scaledown ${LABRARY})
 
+  add_executable(main_detect main_detect.cpp)
+  target_link_libraries(main_detect ${LABRARY})
+
 endif (BUILD_TEST)
 

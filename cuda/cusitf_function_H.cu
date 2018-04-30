@@ -3,15 +3,11 @@
 
 #define MESSAGE 1
 
-
-#define __MAXSIZECON 32*2+1
-__constant__ float coeffGaussKernel[__MAXSIZECON];
-__device__ unsigned int d_PointCounter[1];
-//choose 55 suport 16384 pixel size image (log2(16384) - 2)*5
-__device__ float *pd[60];
-//choose 66 suport 16384 pixel size image (log2(16384) - 2)*6
-__device__ float *pgpyr[72];
 texture<float, 1, cudaReadModeElementType> texRef;
+
+
+
+
 
 /***********
 //This is an adjustable option which control the gaussKernel size. \
@@ -884,6 +880,38 @@ void cuGaussianBlur(CudaImage &cuImg,float sigma)
 
 
 }
+
+//void cuGaussianBlur(CudaImage &cuImg,float sigma,float *tmp_data,float*tmp_data1)
+//{
+//    assert(sigma>0);
+//    int kernelSize = 0;
+
+//    kernelSize = cvRound(sigma*4*2 + 1)|1;
+//    assert( kernelSize < 32*2+1 );
+
+//    Mat kx;
+//    kx = getGaussianKernel(kernelSize,sigma,CV_32F);
+
+//    CHECK(cudaMemcpyToSymbol(coeffGaussKernel,(float*)kx.data,sizeof(float)*kernelSize));
+
+//    dim3 BlockRow(ROW_BLOCK_DIM_X,ROW_BLOCK_DIM_Y);
+//    dim3 GridRow(iDivUp(cuImg.pitch,BlockRow.x*ROW_UNROLL_STEPS),iDivUp(cuImg.height,BlockRow.y));
+
+//    GaussianBlurKernelRow<<<GridRow,BlockRow>>>(cuImg.d_data,tmp_data,cuImg.width,cuImg.height,kernelSize,cuImg.pitch);
+//    safeCall(cudaDeviceSynchronize());
+
+//    dim3 BlockCol(COLUMNS_BLOCKDIM_X,COLUMNS_BLOCKDIM_Y);
+//    dim3 GridCol(iDivUp(cuImg.pitch,BlockCol.x),iDivUp(cuImg.height,BlockCol.y*COLUMNS_RESULT_STEPS));
+
+//    GaussianBlurKernelCol<<<GridCol,BlockCol>>>(tmp_data,tmp_data1,cuImg.width,cuImg.height,kernelSize,cuImg.pitch);
+//    safeCall(cudaDeviceSynchronize());
+
+//    /*device data has not copy to host yet*/
+//    safeCall(cudaMemcpy2D(cuImg.d_data,cuImg.pitch*sizeof(float),tmp_data1,cuImg.pitch*sizeof(float),cuImg.width*sizeof(float),(size_t) cuImg.height,cudaMemcpyDeviceToDevice));
+
+//}
+
+
 void createInitialImage(const Mat &src, CudaImage &base, float sigma,bool doubleImageSize)
 {
     int width = src.cols;
@@ -907,6 +935,14 @@ void createInitialImage(const Mat &src, CudaImage &base, float sigma,bool double
 
     if( doubleImageSize )
     {
+        sig_diff = sqrtf( std::max(sigma * sigma - SIFT_INIT_SIGMA * SIFT_INIT_SIGMA * 4, 0.01f) );
+        resize(gray_fpt, gray_fpt, Size(gray_fpt.cols*2, gray_fpt.rows*2), 0, 0, INTER_LINEAR);
+        width = gray_fpt.cols;
+        height = gray_fpt.rows;
+        base.Allocate(width,height,iAlignUp(width, 128),false,NULL,(float*)gray_fpt.data);
+        base.Download();
+        cuGaussianBlur(base,sig_diff);
+
     }
     else
     {
@@ -974,8 +1010,6 @@ void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOct
         double sig_total = sig_prev*k;
         sig[i] = std::sqrt(sig_total*sig_total - sig_prev*sig_prev);
     }
-
-
 
     for( int o = 0; o < nOctaves; o++ )
     {
@@ -1053,10 +1087,11 @@ void buildDoGPyramid( std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogp
 
 }
 
-void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, float* keypoints){
+void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, float* h_keypoints){
+    float* d_keypoints;
     int totPts = 0;
     safeCall(cudaMemcpyToSymbol(d_PointCounter, &totPts, sizeof(int)));
-    cudaMalloc(&keypoints,sizeof(float)*maxPoints*KEYPOINTS_SIZE);
+    cudaMalloc(&d_keypoints,sizeof(float)*maxPoints*KEYPOINTS_SIZE);
 
     const int threshold = cvFloor(0.5 * contrastThreshold / nOctaveLayers * 255 * SIFT_FIXPT_SCALE);
 
@@ -1082,67 +1117,72 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
         for(int i = 0;i<nOctaveLayers;i++){
             int index = o*(nOctaveLayers+2)+i+1;
             dim3 Grid(iDivUp(dogpyr[index].pitch,Block.x),iDivUp(dogpyr[index].height,Block.y));
-            findScaleSpaceExtrema<<<Grid,Block>>>(keypoints,index,dogpyr[index].width,dogpyr[index].pitch,dogpyr[index].height,threshold,nOctaveLayers,maxPoints);
+            findScaleSpaceExtrema<<<Grid,Block>>>(d_keypoints,index,dogpyr[index].width,dogpyr[index].pitch,dogpyr[index].height,threshold,nOctaveLayers,maxPoints);
             safeCall(cudaDeviceSynchronize());
         }
     }
 
-
-
-
-    //float *h_pd[5];
-//    float **h_pd = new float*[5];
-//    for(int i = 0;i<5;i++)
-//        h_pd[i] = dogpyr[i].d_data;
-//    safeCall(cudaMemcpyToSymbol(pd, h_pd, sizeof(float *)*5));
-
-
-//    for(int i = 1;i<4;i++){
-//        dim3 Block(32,8);
-//        dim3 Grid(iDivUp(dogpyr[i].pitch,Block.x),iDivUp(dogpyr[i].height,Block.y));
-//        findScaleSpaceExtrema<<<Grid,Block>>>(keypoints,i,dogpyr[i].width,dogpyr[i].pitch,dogpyr[i].height);
-//        safeCall(cudaDeviceSynchronize());
-//    }
-#ifdef SHOW_KEYPOINT
     int num = 0;
     safeCall(cudaMemcpyFromSymbol(&num, d_PointCounter, sizeof(int)));
     num = (num>maxPoints)? maxPoints:num;
-    printf("my sift kepoints num : %d \n",num);
+    printf("cuda sift kepoints num : %d \n",num);
 
-    float *h_points;
-    h_points = (float *)malloc(num*KEYPOINTS_SIZE*sizeof(float));
-    safeCall(cudaMemcpy(h_points,keypoints,num*KEYPOINTS_SIZE*sizeof(float),cudaMemcpyDeviceToHost));
+    h_keypoints = (float *)malloc(num*KEYPOINTS_SIZE*sizeof(float));
+    safeCall(cudaMemcpy(h_keypoints,d_keypoints,num*KEYPOINTS_SIZE*sizeof(float),cudaMemcpyDeviceToHost));
+
+#ifdef SHOW_KEYPOINT
 
     std::vector<KeyPoint> keypointss;
     keypointss.resize(num);
     for(int i = 0;i<keypointss.size();++i)
     {
-        keypointss[i].pt.x =  h_points[i*KEYPOINTS_SIZE];
-        keypointss[i].pt.y =  h_points[i*KEYPOINTS_SIZE+1];
-        keypointss[i].octave =  h_points[i*KEYPOINTS_SIZE+2];
-        keypointss[i].size =  h_points[i*KEYPOINTS_SIZE+3];
-        keypointss[i].response =  h_points[i*KEYPOINTS_SIZE+4];
-        keypointss[i].angle =  h_points[i*KEYPOINTS_SIZE+5];
+        keypointss[i].pt.x =  h_keypoints[i*KEYPOINTS_SIZE];
+        keypointss[i].pt.y =  h_keypoints[i*KEYPOINTS_SIZE+1];
+        keypointss[i].octave =  h_keypoints[i*KEYPOINTS_SIZE+2];
+        keypointss[i].size =  h_keypoints[i*KEYPOINTS_SIZE+3];
+        keypointss[i].response =  h_keypoints[i*KEYPOINTS_SIZE+4];
+        keypointss[i].angle =  h_keypoints[i*KEYPOINTS_SIZE+5];
     }
 
     KeyPointsFilter::removeDuplicatedSorted( keypointss );
     printf("my sift kepoints num after clear : %d \n",keypointss.size());
 
+#ifdef NODOUBLEIMAGE
+#else
+    int firstOctave = -1;
+    if( firstOctave < 0 )
+        for( size_t i = 0; i < keypointss.size(); i++ )
+        {
+            KeyPoint& kpt = keypointss[i];
+            float scale = 1.f/(float)(1 << -firstOctave);
+            kpt.octave = (kpt.octave & ~255) | ((kpt.octave + firstOctave) & 255);
+            kpt.pt *= scale;
+            kpt.size *= scale;
+        }
+#endif
+
+
+
+
     Mat kepoint;
-    CudaImage &img = gpyr[0];
-    Mat img_1(img.height,img.width,CV_32F);
-    safeCall(cudaMemcpy2D(img_1.data,img.width*sizeof(float),gpyr[0].d_data,gpyr[0].pitch*sizeof(float),gpyr[0].width*sizeof(float),(size_t) gpyr[0].height,cudaMemcpyDeviceToHost));
+//    CudaImage &img = gpyr[0];
+//    Mat img_1(img.height,img.width,CV_32F);
+//    safeCall(cudaMemcpy2D(img_1.data,img.width*sizeof(float),gpyr[0].d_data,gpyr[0].pitch*sizeof(float),gpyr[0].width*sizeof(float),(size_t) gpyr[0].height,cudaMemcpyDeviceToHost));
+
+    char *a ="../data/road.png";
+    Mat img_1 = imread(a);
     Mat gray;
     img_1.convertTo(gray,DataType<uchar>::type, 1, 0);
     drawKeypoints(gray,keypointss,kepoint,cv::Scalar::all(-1),4);
-//    char *a ="../data/road.png";
-//    Mat img_1 = imread(a);
-//    drawKeypoints(img_1,keypoints,kepoint);
+
 
     cvNamedWindow("extract_my",CV_WINDOW_NORMAL);
     imshow("extract_my", kepoint);
     waitKey(0);
 
+//    for(int i = 0;i < keypointss.size();i++)
+//        std::cout<<keypointss[i].pt.x<<" ";
+//    std::cout<<std::endl;
 #ifdef COMPARE_VALUE
     sort(keypointss.begin(),keypointss.end(),sortx);
     int unique_nums;
@@ -1152,7 +1192,7 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
     std::cout<<unique_nums<<std::endl;
 #endif
 #endif
-
+    cudaFree(d_keypoints);
 }
 
 void displayOctave(std::vector<CudaImage> &Octave)
