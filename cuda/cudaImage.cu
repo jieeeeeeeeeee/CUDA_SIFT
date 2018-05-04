@@ -13,7 +13,7 @@ void CudaImage::Allocate(int w, int h, int p, bool host, float *devmem, float *h
   width = w;
   height = h; 
   pitch = p; 
-  d_data = devmem;
+  d_data = nullptr;
   h_data = hostmem; 
   t_data = NULL; 
   if (devmem==NULL) {
@@ -126,8 +126,8 @@ void CudaImage::copyDevice(CudaImage &src,bool haveDevice){
     pitch = src.pitch;
     if(!haveDevice){
         safeCall(cudaMallocPitch((void **)&d_data, (size_t*)&pitch, (size_t)(sizeof(float)*width), (size_t)height));
+        pitch /= sizeof(float);
         d_internalAlloc = true;
     }
-    pitch /= sizeof(float);
     safeCall(cudaMemcpy2D(d_data, sizeof(float)*pitch, src.d_data, sizeof(float)*src.pitch, sizeof(float)*width, height, cudaMemcpyDeviceToDevice));
 }

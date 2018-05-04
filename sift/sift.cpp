@@ -843,7 +843,7 @@ public:
                     //simga*2^s/S,the simga the simga relative to the octave.
                     float scl_octv = kpt.size*0.5f/(1 << o);
                     //the radius is the 3*1.5*simga,the first parameter is the img in
-                    //gpyr which index is the 1~4
+                    //gpyr which index is 1~4
                     float omax = calcOrientationHist(gauss_pyr[o*(nOctaveLayers+3) + layer],
                                                      Point(c1, r1),
                                                      cvRound(SIFT_ORI_RADIUS * scl_octv),

@@ -716,6 +716,310 @@ __global__ void findScaleSpaceExtrema(float *d_point,int s, int width ,int pitch
     }//extrema
 }
 
+__global__ void findScaleSpaceExtrema_gpu(float *d_point,int s, int width ,int pitch ,int height,const int threshold,const int nOctaveLayers,const int maxNum){
+
+    int x = blockIdx.x*blockDim.x+threadIdx.x;
+    int y = blockIdx.y*blockDim.y+threadIdx.y;
+
+    //avoid extract the unstable border points
+    if(y >= height - SIFT_IMG_BORDER || x >= width - SIFT_IMG_BORDER || x<SIFT_IMG_BORDER || y<SIFT_IMG_BORDER)
+        return;
+
+    float *currptr = pd[s]  +y*pitch+x;
+    float *prevptr = pd[s-1]+y*pitch+x;
+    float *nextptr = pd[s+1]+y*pitch+x;
+
+    int o = s/(nOctaveLayers+2);
+    float val = *currptr;
+    int step = pitch;
+    int c = 0;
+    if( abs(val) > threshold &&
+       ((val > 0 && val >= currptr[c-1] && val >= currptr[c+1] &&
+         val >= currptr[c-step-1] && val >= currptr[c-step] && val >= currptr[c-step+1] &&
+         val >= currptr[c+step-1] && val >= currptr[c+step] && val >= currptr[c+step+1] &&
+         val >= nextptr[c] && val >= nextptr[c-1] && val >= nextptr[c+1] &&
+         val >= nextptr[c-step-1] && val >= nextptr[c-step] && val >= nextptr[c-step+1] &&
+         val >= nextptr[c+step-1] && val >= nextptr[c+step] && val >= nextptr[c+step+1] &&
+         val >= prevptr[c] && val >= prevptr[c-1] && val >= prevptr[c+1] &&
+         val >= prevptr[c-step-1] && val >= prevptr[c-step] && val >= prevptr[c-step+1] &&
+         val >= prevptr[c+step-1] && val >= prevptr[c+step] && val >= prevptr[c+step+1]) ||
+        (val < 0 && val <= currptr[c-1] && val <= currptr[c+1] &&
+         val <= currptr[c-step-1] && val <= currptr[c-step] && val <= currptr[c-step+1] &&
+         val <= currptr[c+step-1] && val <= currptr[c+step] && val <= currptr[c+step+1] &&
+         val <= nextptr[c] && val <= nextptr[c-1] && val <= nextptr[c+1] &&
+         val <= nextptr[c-step-1] && val <= nextptr[c-step] && val <= nextptr[c-step+1] &&
+         val <= nextptr[c+step-1] && val <= nextptr[c+step] && val <= nextptr[c+step+1] &&
+         val <= prevptr[c] && val <= prevptr[c-1] && val <= prevptr[c+1] &&
+         val <= prevptr[c-step-1] && val <= prevptr[c-step] && val <= prevptr[c-step+1] &&
+         val <= prevptr[c+step-1] && val <= prevptr[c+step] && val <= prevptr[c+step+1])))
+    {
+        /*adjustLocalExtrema*/
+        const float img_scale = 1.f/(255*SIFT_FIXPT_SCALE);
+        const float deriv_scale = img_scale*0.5f;
+        const float second_deriv_scale = img_scale;
+        const float cross_deriv_scale = img_scale*0.25f;
+        float Vs=0, Vx=0, Vy=0, contr=0;
+        float dx,dy,ds,dxx,dyy,dxy;
+        int j = 0,layer;
+        //get the x,y,s,Vs,Vx,Vy or return
+        for( ; j < SIFT_MAX_INTERP_STEPS; j++ )
+        {
+            currptr = pd[s]  +y*pitch+x;
+            prevptr = pd[s-1]+y*pitch+x;
+            nextptr = pd[s+1]+y*pitch+x;
+
+            //the first derivative of x,y and scale
+            dx = (currptr[1] - currptr[-1])*deriv_scale;
+            dy = (currptr[pitch] - currptr[-pitch])*deriv_scale;;
+            ds = (nextptr[0] - prevptr[0])*deriv_scale;
+            float v2 = currptr[0]*2;
+
+            //the second derivative of x,y,scale
+            dxx = (currptr[1] + currptr[-1] - v2)*second_deriv_scale;
+            dyy = (currptr[pitch] + currptr[-pitch] - v2)*second_deriv_scale;
+            float dss = (nextptr[0] + prevptr[0] - v2)*second_deriv_scale;
+            dxy = (currptr[pitch+1] - currptr[1-pitch] -
+                         currptr[-1+pitch] + currptr[-pitch-1])*cross_deriv_scale;
+            float dxs = (nextptr[1] - nextptr[-1] -
+                         prevptr[1] + prevptr[-1])*cross_deriv_scale;
+            float dys = (nextptr[pitch] - nextptr[-pitch] -
+                         prevptr[pitch] + prevptr[-pitch])*cross_deriv_scale;
+
+            //Algebraic cousin
+            float idxx = dyy*dss - dys*dys;
+            float idxy = dys*dxs - dxy*dss;
+            float idxs = dxy*dys - dyy*dxs;
+            //idet is the det,the matrix's determinant countdown
+            float idet = __fdividef(1.0f, idxx*dxx + idxy*dxy + idxs*dxs);
+            float idyy = dxx*dss - dxs*dxs;
+            float idys = dxy*dxs - dxx*dys;
+            float idss = dxx*dyy - dxy*dxy;
+            ////////////////////////
+            ///  A(dxx, dxy, dxs,
+            ///    dxy, dyy, dys,
+            ///    dxs, dys, dss);
+            ///
+            ///  A*(idxx, idxy, idxs,
+            ///     idxy, idyy, idys,
+            ///     idxs, idys, idss);
+            ///
+            ///  B(dx,dy,dz)
+            /////////////////////////
+            //dX = (A^-1)*B
+            float pdx = idet*(idxx*dx + idxy*dy + idxs*ds);
+            float pdy = idet*(idxy*dx + idyy*dy + idys*ds);
+            float pds = idet*(idxs*dx + idys*dy + idss*ds);
+
+            Vx = -pdx;
+            Vy = -pdy;
+            Vs = -pds;
+
+            //because of the judgment is before the updated value,so
+            //this iteration final get the x,y,s(intger) and the Vx,Vy,Vz(<0.5).
+            //The accurate extrema location is x+Vx,y+Vy.
+
+            if( abs(Vs) < 0.5f && abs(Vx) < 0.5f && abs(Vy) < 0.5f )
+                break;
+
+            //get nearest intger
+            x += int(Vx > 0 ? ( Vx + 0.5 ) : (Vx - 0.5));
+            y += int(Vy > 0 ? ( Vy + 0.5 ) : (Vy - 0.5));
+            s += int(Vs > 0 ? ( Vs + 0.5 ) : (Vs - 0.5));
+
+            layer = s - o*(nOctaveLayers+2);
+
+            if( layer < 1 || layer > nOctaveLayers ||
+                y < SIFT_IMG_BORDER || y >= height - SIFT_IMG_BORDER  ||
+                x < SIFT_IMG_BORDER || x >= width - SIFT_IMG_BORDER )
+                return;
+
+        }//for
+        if( j >= SIFT_MAX_INTERP_STEPS )
+            return;
+
+        //After the iterative,get the x,y,s,(Vx,Vy,Vs)(<0.5).
+
+        {
+            //remove the small energy points which essily influenced by image noise
+            float t = dx*Vx + dy*Vy + ds*Vs;
+            contr = currptr[0]*img_scale + t * 0.5f;
+            if( abs( contr ) * nOctaveLayers < 0.04 )
+                return;
+
+            // principal curvatures are computed using the trace and det of Hessian
+            float tr = dxx + dyy;
+            float det = dxx*dyy-dxy*dxy;
+
+            if( det <= 0 || tr*tr*10 >= (10 + 1)*(10 + 1)*det )
+                return;
+        }
+
+        layer = s - o*(nOctaveLayers+2);
+
+        //addpoint;
+        unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
+        idx = (idx>maxNum ? maxNum-1 : idx);
+        d_point[idx*KEYPOINTS_SIZE] = (x + Vx)*(1 << o);
+        d_point[idx*KEYPOINTS_SIZE+1] = (y + Vy)*(1 << o);
+        d_point[idx*KEYPOINTS_SIZE+2] = o + (s<<8) + ((int)(((Vs + 0.5)*255)+0.5) << 16);
+        float size = 1.6*__powf(2.f, (layer + Vs) / nOctaveLayers)*(1 << o)*2;
+        d_point[idx*KEYPOINTS_SIZE+3] = size;
+        d_point[idx*KEYPOINTS_SIZE+4] = abs(contr);
+        d_point[idx*KEYPOINTS_SIZE+6] = s;
+        d_point[idx*KEYPOINTS_SIZE+7] = x;
+        d_point[idx*KEYPOINTS_SIZE+8] = y;
+        //temsize+=size*0.5f/(1 << o)*SIFT_ORI_RADIUS+0.5;
+
+        float scl_octv = size*0.5f/(1 << o);
+        //'+0.5' for rounding because scl_octv>0
+        int radius = SIFT_ORI_RADIUS * scl_octv+0.5;
+        //the procress of all point range, a square space.
+        int len = (radius*2+1)*(radius*2+1);
+        //int temBuffSize = len*4+2*SIFT_ORI_HIST_BINS+2;
+        atomicMax(&temsize,len);
+    }
+}
+
+__global__ void calcOrientationHist_gpu(float *d_point,const int* oIndex,float* temdata,const int buffSize,const int pointsNum,const int maxNum,const int nOctaveLayers)
+{
+    //int x = blockIdx.x*blockDim.x+threadIdx.x;
+    int pointIndex = blockIdx.x*blockDim.x+threadIdx.x;
+    if(pointIndex>pointsNum)
+        return;
+    //__shared__
+
+    float size =d_point[pointIndex*KEYPOINTS_SIZE+3];
+    int s = d_point[pointIndex*KEYPOINTS_SIZE+6];
+    int x = d_point[pointIndex*KEYPOINTS_SIZE+7];
+    int y = d_point[pointIndex*KEYPOINTS_SIZE+8];
+
+    int o = s/(nOctaveLayers+2);
+    int layer = s - o*(nOctaveLayers+2);
+
+    int width = oIndex[o*3];
+    int height = oIndex[o*3+1];
+    int pitch = oIndex[o*3+2];
+
+
+    float* currptr;
+    //currptr is the current dog image where the current extrema point in.
+    //x,y,s is the current location in dog images.
+    //Note: s is the absolutely scale location and the 'laryer' is the /
+    //relatively location in the octave which range is 1~3.
+
+    //The orientation is compute in gausspyrmid,so the currptr renew:
+    currptr = pgpyr[o*(nOctaveLayers+3) + layer]+y*pitch+x;
+    //simga*2^s/S,the simga the simga relative to the octave.
+    float scl_octv = size*0.5f/(1 << o);
+    float omax;
+    float sigma_ori = SIFT_ORI_SIG_FCTR * scl_octv;
+    //'+0.5' for rounding because scl_octv>0
+    int radius = SIFT_ORI_RADIUS * scl_octv+0.5,n = SIFT_ORI_HIST_BINS;
+    //float hist[n];
+
+    //the procress of all point range, a square space.
+    int len = (radius*2+1)*(radius*2+1);
+    //garuss smooth's coefficient
+    float expf_scale = -1.f/(2.f * sigma_ori * sigma_ori);
+    //n = 36
+    float *buf = temdata+pointIndex*buffSize;
+    //float *buf = (float *)malloc((len*4 + n+4 + n)*sizeof(float));
+    //the buf is a memory storage the temporary data.
+    //The frist len is the Mag('fu zhi')and X,second len is the Y,third len is the Ori,
+    //the forth is gauss weight(len+2)
+    //the temphist is(n + 2).
+    float *X = buf, *Y = X + len, *Mag = X, *Ori = Y + len, *W = Ori + len;
+    //gradient direction histogarm
+    float* temphist = W + len,*hist = temphist+n+2;
+
+    for( int i = 0; i < n; i++ )
+        temphist[i] = 0.f;
+
+    for( int i = -radius, k = 0; i <= radius; i++ )
+    {
+        int yi = y + i;
+        // '=' avoid out of memory for i-1,j-1 following
+        if( yi <= 0 || yi >= height - 1 )
+            continue;
+        for( int j = -radius; j <= radius; j++ )
+        {
+            int xi = x + j;
+            if( xi <= 0 || xi >= width - 1 )
+                continue;
+
+            float dx = (float)(currptr[i*pitch+j+1] - currptr[i*pitch+j-1]);
+            //the positive direction is from bottom to top contrary to the image /
+            //from top to bottom.So dy = y-1 - (y+1).
+            float dy = (float)(currptr[(i-1)*pitch+j] - currptr[(i+1)*pitch+j]);
+
+            X[k] = dx;
+            Y[k] = dy;
+            //Wight not multiply 1/pi,because the compute of oritentation
+            //only need the relative wight.
+            W[k] = __expf((i*i + j*j)*expf_scale);
+            Ori[k] = atan2f(dy,dx);
+            Mag[k] = sqrtf(dy*dy+dx*dx);
+
+            //cvRound((ori/pi+180)/360*36)
+            float tembin = __fdividef(__fdividef(Ori[k]*180,CV_PI),360/n);
+            int bin = tembin > 0 ? tembin + 0.5:tembin - 0.5;
+            if( bin >= n )
+                bin -= n;
+            if( bin < 0 )
+                bin += n;
+            temphist[bin] += W[k]*Mag[k];
+            k++;
+        }
+    }
+
+    temphist[-1] = temphist[n-1];
+    temphist[-2] = temphist[n-2];
+    temphist[n] = temphist[0];
+    temphist[n+1] = temphist[1];
+
+    for(int i = 0; i < n; i++ )
+    {
+        hist[i] = (temphist[i-2] + temphist[i+2])*(1.f/16.f) +
+            (temphist[i-1] + temphist[i+1])*(4.f/16.f) +
+            temphist[i]*(6.f/16.f);
+    }
+
+    omax = hist[0];
+    for( int i = 1; i < n; i++ )
+        omax = fmaxf(omax, hist[i]);
+    //printf("omax : %f \n",omax);
+
+    float mag_thr = (float)(omax * SIFT_ORI_PEAK_RATIO);
+
+    for( int j = 0; j < n; j++ )
+    {
+        int l = j > 0 ? j - 1 : n - 1;
+        int r2 = j < n-1 ? j + 1 : 0;
+
+        if( hist[j] > hist[l]  &&  hist[j] > hist[r2]  &&  hist[j] >= mag_thr )
+        {
+            float bin = j + 0.5f * (hist[l]-hist[r2]) / (hist[l] - 2*hist[j] + hist[r2]);
+            bin = bin < 0 ? n + bin : bin >= n ? bin - n : bin;
+
+            if(hist[j] == omax)
+                d_point[pointIndex*KEYPOINTS_SIZE+5] = 360.f - (float)((360.f/n) * bin);
+            else{
+                //addpoint;
+                unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
+                idx = (idx>maxNum ? maxNum-1 : idx);
+                d_point[idx*KEYPOINTS_SIZE] = d_point[pointIndex*KEYPOINTS_SIZE];
+                d_point[idx*KEYPOINTS_SIZE+1] = d_point[pointIndex*KEYPOINTS_SIZE+1];
+                d_point[idx*KEYPOINTS_SIZE+2] = d_point[pointIndex*KEYPOINTS_SIZE+2];
+                d_point[idx*KEYPOINTS_SIZE+3] = d_point[pointIndex*KEYPOINTS_SIZE+3];
+                d_point[idx*KEYPOINTS_SIZE+4] = d_point[pointIndex*KEYPOINTS_SIZE+4];
+                d_point[idx*KEYPOINTS_SIZE+5] = 360.f - (float)((360.f/n) * bin);
+            }
+        }
+    }
+
+    //delete []buf;
+}
+
 // Scale down thread block width
 #define SCALEDOWN_W   160
 // Scale down thread block height
@@ -797,7 +1101,6 @@ __global__ void ScaleDown(float *d_Result, float *d_Data, int width, int pitch, 
     __syncthreads();
   }
 }
-
 
 __global__ void test()
 {
@@ -881,37 +1184,6 @@ void cuGaussianBlur(CudaImage &cuImg,float sigma)
 
 }
 
-//void cuGaussianBlur(CudaImage &cuImg,float sigma,float *tmp_data,float*tmp_data1)
-//{
-//    assert(sigma>0);
-//    int kernelSize = 0;
-
-//    kernelSize = cvRound(sigma*4*2 + 1)|1;
-//    assert( kernelSize < 32*2+1 );
-
-//    Mat kx;
-//    kx = getGaussianKernel(kernelSize,sigma,CV_32F);
-
-//    CHECK(cudaMemcpyToSymbol(coeffGaussKernel,(float*)kx.data,sizeof(float)*kernelSize));
-
-//    dim3 BlockRow(ROW_BLOCK_DIM_X,ROW_BLOCK_DIM_Y);
-//    dim3 GridRow(iDivUp(cuImg.pitch,BlockRow.x*ROW_UNROLL_STEPS),iDivUp(cuImg.height,BlockRow.y));
-
-//    GaussianBlurKernelRow<<<GridRow,BlockRow>>>(cuImg.d_data,tmp_data,cuImg.width,cuImg.height,kernelSize,cuImg.pitch);
-//    safeCall(cudaDeviceSynchronize());
-
-//    dim3 BlockCol(COLUMNS_BLOCKDIM_X,COLUMNS_BLOCKDIM_Y);
-//    dim3 GridCol(iDivUp(cuImg.pitch,BlockCol.x),iDivUp(cuImg.height,BlockCol.y*COLUMNS_RESULT_STEPS));
-
-//    GaussianBlurKernelCol<<<GridCol,BlockCol>>>(tmp_data,tmp_data1,cuImg.width,cuImg.height,kernelSize,cuImg.pitch);
-//    safeCall(cudaDeviceSynchronize());
-
-//    /*device data has not copy to host yet*/
-//    safeCall(cudaMemcpy2D(cuImg.d_data,cuImg.pitch*sizeof(float),tmp_data1,cuImg.pitch*sizeof(float),cuImg.width*sizeof(float),(size_t) cuImg.height,cudaMemcpyDeviceToDevice));
-
-//}
-
-
 void createInitialImage(const Mat &src, CudaImage &base, float sigma,bool doubleImageSize)
 {
     int width = src.cols;
@@ -942,7 +1214,6 @@ void createInitialImage(const Mat &src, CudaImage &base, float sigma,bool double
         base.Allocate(width,height,iAlignUp(width, 128),false,NULL,(float*)gray_fpt.data);
         base.Download();
         cuGaussianBlur(base,sig_diff);
-
     }
     else
     {
@@ -986,6 +1257,7 @@ void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOct
     //init the size of the pyramid images which is nOctave*nLayer
     pyr.resize(nOctaves*(nOctaveLayers + 3));
 
+    //optimization points which allocate a big memory
     int w = base.width;
     int h = base.height;
     for( int o = 0; o < nOctaves; o++ )
@@ -1017,7 +1289,7 @@ void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOct
         {
             CudaImage& dst = pyr[o*(nOctaveLayers + 3) + i];
             if( o == 0  &&  i == 0 ){
-                dst.copyDevice(base,0);
+                dst.copyDevice(base,1);
 #ifdef SHOW_GAUSSIANPYRAMID
                 CudaImage &src = dst;
                 Mat gray,show;
@@ -1038,7 +1310,7 @@ void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOct
             else
             {
                 CudaImage& src = pyr[o*(nOctaveLayers + 3) + i-1];
-                dst.copyDevice(src,0);
+                dst.copyDevice(src,1);
                 cuGaussianBlur(dst,sig[i]);
 #ifdef SHOW_GAUSSIANPYRAMID
                 Mat gray,show;
@@ -1064,8 +1336,8 @@ void buildDoGPyramid( std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogp
     //could use cuda stream
     for(int o = 0;o<nOctaves;o++){
         for(int i = 0;i<nOctaveLayers + 2;i++){
-            CudaImage& prev = gpyr[o*(nOctaveLayers + 2)+i+o];
-            CudaImage& next = gpyr[o*(nOctaveLayers + 2)+i+1+o];
+            CudaImage& prev = gpyr[o*(nOctaveLayers + 3)+i];
+            CudaImage& next = gpyr[o*(nOctaveLayers + 3)+i+1];
             CudaImage& diff = dogpyr[o*(nOctaveLayers + 2)+i];
             diff.Allocate(prev.width,prev.height,prev.pitch,false);
             dim3 Block(32,8);
@@ -1111,6 +1383,8 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
     safeCall(cudaMemcpyToSymbol(pgpyr, h_gpyr, sizeof(float *)*gpyr.size()));
 
     //for every OctaveLayers which number is o*3
+#if 0
+    //combine findextrema and oritentation
     dim3 Block(32,8);
     int nOctaves = (int)gpyr.size()/(nOctaveLayers + 3);
     for(int o = 0;o<nOctaves;o++){
@@ -1121,6 +1395,50 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
             safeCall(cudaDeviceSynchronize());
         }
     }
+#else
+    int temDataSize = 0;
+    safeCall(cudaMemcpyToSymbol(temsize, &temDataSize, sizeof(int)));
+
+    dim3 Block(32,8);
+    int nOctaves = (int)gpyr.size()/(nOctaveLayers + 3);
+    for(int o = 0;o<nOctaves;o++){
+        for(int i = 0;i<nOctaveLayers;i++){
+            int index = o*(nOctaveLayers+2)+i+1;
+            dim3 Grid(iDivUp(dogpyr[index].pitch,Block.x),iDivUp(dogpyr[index].height,Block.y));
+            findScaleSpaceExtrema_gpu<<<Grid,Block>>>(d_keypoints,index,dogpyr[index].width,dogpyr[index].pitch,dogpyr[index].height,threshold,nOctaveLayers,maxPoints);
+            safeCall(cudaDeviceSynchronize());
+        }
+    }
+
+
+    int num0 = 0;
+    safeCall(cudaMemcpyFromSymbol(&num0, d_PointCounter, sizeof(int)));
+    num0 = (num0>maxPoints)? maxPoints:num0;
+    printf("cuda sift kepoints num : %d \n",num0);
+    int* oIndex = new int[nOctaves*3];
+    for(int i =0;i<nOctaves;i++){
+        int index = i*(nOctaveLayers+2);
+        oIndex[i*3] = dogpyr[index].width;
+        oIndex[i*3+1] = dogpyr[index].height;
+        oIndex[i*3+2] = dogpyr[index].pitch;
+    }
+    int* d_oIndex;
+    cudaMalloc(&d_oIndex,sizeof(int)*nOctaves*3);
+    cudaMemcpy(d_oIndex,oIndex,sizeof(int)*nOctaves*3,cudaMemcpyHostToDevice);
+
+    float* temData;
+    safeCall(cudaMemcpyFromSymbol(&temDataSize, temsize, sizeof(int)));
+    int buffSize = temDataSize*4+2*SIFT_ORI_HIST_BINS+2;
+    cudaMalloc(&temData,sizeof(float)*num0*buffSize);
+
+    int grid =iDivUp(num0,256);
+    calcOrientationHist_gpu<<<grid,256>>>(d_keypoints,d_oIndex,temData,buffSize,num0,maxPoints,nOctaveLayers);
+    safeCall( cudaGetLastError() );
+
+    safeCall(cudaDeviceSynchronize());
+    cudaFree(d_oIndex);
+    cudaFree(temData);
+#endif
 
     int num = 0;
     safeCall(cudaMemcpyFromSymbol(&num, d_PointCounter, sizeof(int)));
@@ -1129,6 +1447,8 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
 
     h_keypoints = (float *)malloc(num*KEYPOINTS_SIZE*sizeof(float));
     safeCall(cudaMemcpy(h_keypoints,d_keypoints,num*KEYPOINTS_SIZE*sizeof(float),cudaMemcpyDeviceToHost));
+
+    cudaFree(d_keypoints);
 
 #ifdef SHOW_KEYPOINT
 
@@ -1142,6 +1462,9 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
         keypointss[i].size =  h_keypoints[i*KEYPOINTS_SIZE+3];
         keypointss[i].response =  h_keypoints[i*KEYPOINTS_SIZE+4];
         keypointss[i].angle =  h_keypoints[i*KEYPOINTS_SIZE+5];
+//        if(keypointss[i].angle!=0)
+//            //printf("x: %f,y: %f\n",keypointss[i].pt.x,keypointss[i].pt.y);
+//            keypointss[i].size = 80;
     }
 
     KeyPointsFilter::removeDuplicatedSorted( keypointss );
@@ -1164,21 +1487,23 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
 
 
 
-    Mat kepoint;
-//    CudaImage &img = gpyr[0];
-//    Mat img_1(img.height,img.width,CV_32F);
-//    safeCall(cudaMemcpy2D(img_1.data,img.width*sizeof(float),gpyr[0].d_data,gpyr[0].pitch*sizeof(float),gpyr[0].width*sizeof(float),(size_t) gpyr[0].height,cudaMemcpyDeviceToHost));
+//    Mat kepoint;
+////    CudaImage &img = gpyr[0];
+////    Mat img_1(img.height,img.width,CV_32F);
+////    safeCall(cudaMemcpy2D(img_1.data,img.width*sizeof(float),gpyr[0].d_data,gpyr[0].pitch*sizeof(float),gpyr[0].width*sizeof(float),(size_t) gpyr[0].height,cudaMemcpyDeviceToHost));
+//    //char *a ="../data/100_7101.JPG";
+//    //char *a ="../data/img2.ppm";
+//    char *a ="../data/100_7101.JPG";
+//    //char *a ="../data/road.png";
+//    Mat img_1 = imread(a);
+//    Mat gray;
+//    img_1.convertTo(gray,DataType<uchar>::type, 1, 0);
+//    drawKeypoints(gray,keypointss,kepoint,cv::Scalar::all(-1),4);
 
-    char *a ="../data/road.png";
-    Mat img_1 = imread(a);
-    Mat gray;
-    img_1.convertTo(gray,DataType<uchar>::type, 1, 0);
-    drawKeypoints(gray,keypointss,kepoint,cv::Scalar::all(-1),4);
 
-
-    cvNamedWindow("extract_my",CV_WINDOW_NORMAL);
-    imshow("extract_my", kepoint);
-    waitKey(0);
+//    cvNamedWindow("extract_my",CV_WINDOW_NORMAL);
+//    imshow("extract_my", kepoint);
+//    waitKey(0);
 
 //    for(int i = 0;i < keypointss.size();i++)
 //        std::cout<<keypointss[i].pt.x<<" ";
@@ -1192,7 +1517,7 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
     std::cout<<unique_nums<<std::endl;
 #endif
 #endif
-    cudaFree(d_keypoints);
+
 }
 
 void displayOctave(std::vector<CudaImage> &Octave)
@@ -1344,7 +1669,6 @@ void computePerOctave(CudaImage& base, std::vector<double> &sig, int nOctaveLaye
 
 
 }
-
 
 /*disable*/
 void disMatf(CudaImage &cuImg){

@@ -29,4 +29,6 @@ public:
 
 
 
+
+
 #endif // CUDAIMAGE_H

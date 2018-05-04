@@ -7,7 +7,7 @@
 //#include "cusitf_function_D.h"
 
 using namespace cv;
-
+//using namespace cusift;
 
 
 #define SHOW
@@ -16,7 +16,6 @@ using namespace cv;
 #define SHOW_KEYPOINT
 //#define FIND_DOGERRORTEST
 //#define TEST_FIRST_OCTAVE
-
 //#define NODOUBLEIMAGE
 
 //#define COMPARE_VALUE
@@ -85,15 +84,17 @@ static const float SIFT_INT_DESCR_FCTR = 512.f;
 
 static const int SIFT_FIXPT_SCALE = 1;
 
+static const int KEYPOINTS_SIZE = 9;
+
 //the value of static value
 int nOctaveLayers = 3;
 double contrastThreshold = 0.04;
 double edgeThreshold = 10;
 double sigma = 1.6;
-unsigned int maxPoints = 6000;
+unsigned int maxPoints = 30000;
 
-static const unsigned KeyPoints_size = 6;
-#define KEYPOINTS_SIZE 6
+//static const unsigned KeyPoints_size = 9;
+
 
 cv::Mat cv::getGaussianKernel( int n, double sigma, int ktype );
 
@@ -141,9 +142,9 @@ __device__ unsigned int d_PointCounter[1];
 __device__ float *pd[60];
 //choose 66 suport 16384 pixel size image (log2(16384) - 2)*6
 __device__ float *pgpyr[72];
-
-
-
+__device__ int temsize;
+//33 suppose the max Octave is 11
+__constant__ float d_oIndex[33];
 
 
 
