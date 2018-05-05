@@ -138,13 +138,13 @@ float **h_pd = new float*[5];
 #define __MAXSIZECON 32*2+1
 __constant__ float coeffGaussKernel[__MAXSIZECON];
 __device__ unsigned int d_PointCounter[1];
-//choose 55 suport 16384 pixel size image (log2(16384) - 2)*5
+//choose 60 suport 16384 pixel size image (log2(16384) - 2)*5
 __device__ float *pd[60];
-//choose 66 suport 16384 pixel size image (log2(16384) - 2)*6
+//choose 72 suport 16384 pixel size image (log2(16384) - 2)*6
 __device__ float *pgpyr[72];
 __device__ int temsize;
-//33 suppose the max Octave is 11
-__constant__ float d_oIndex[33];
+//36 suppose the max Octave is 12
+__constant__ int d_oIndex[36];
 
 
 

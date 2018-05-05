@@ -9,15 +9,12 @@
 
 #define USE_MY_SIFT
 
-
 #ifdef USE_SIFT OR USE_SURF
 #include "opencv2/features2d.hpp"
 #endif
 #ifdef USE_MY_SIFT
 #include"sift/sift.h"
 #endif
-
-
 
 //#define IMAGE_SHOW
 using namespace cv;
@@ -59,9 +56,9 @@ int main()
 {
     std::cout<<"Hello World !"<<std::endl;
     //char *a ="../data/img2.ppm";
-    //char *a ="../data/road.png";
+    char *a ="../data/road.png";
     //char *a ="../data/lena.png";
-    char *a ="../data/100_7101.JPG";
+    //char *a ="../data/100_7101.JPG";
     //char *a ="../data/DSC04034.JPG";
     //char *a ="../data/1080.jpg";
     cv::Mat src;

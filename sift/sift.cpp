@@ -503,7 +503,7 @@ static float calcOrientationHist( const Mat& img, Point pt, int radius,
     AutoBuffer<float> buf(len*4 + n+4);
     //the buf is a memory storage the temporary data.
     //The frist len is the Mag('fu zhi'),second is the Ori,third is the gauss weight(len+2),
-    //the forth is temphist,(n + 2)
+    //the forth is temphist,(n + 4)
     float *X = buf, *Y = X + len, *Mag = X, *Ori = Y + len, *W = Ori + len;
     //gradient direction histogarm
     float* temphist = W + len + 2;

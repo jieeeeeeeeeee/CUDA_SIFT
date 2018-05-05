@@ -880,25 +880,44 @@ __global__ void findScaleSpaceExtrema_gpu(float *d_point,int s, int width ,int p
     }
 }
 
-__global__ void calcOrientationHist_gpu(float *d_point,const int* oIndex,float* temdata,const int buffSize,const int pointsNum,const int maxNum,const int nOctaveLayers)
+__global__ void calcOrientationHist_gpu(float *d_point,float* temdata,const int buffSize,const int pointsNum,const int maxNum,const int nOctaveLayers)
 {
     //int x = blockIdx.x*blockDim.x+threadIdx.x;
     int pointIndex = blockIdx.x*blockDim.x+threadIdx.x;
-    if(pointIndex>pointsNum)
+    if(pointIndex>=pointsNum)
         return;
-    //__shared__
+#define SHAREMEMORY
+#ifdef SHAREMEMORY
+    __shared__ float s_point[32*KEYPOINTS_SIZE];
+    s_point[threadIdx.x*KEYPOINTS_SIZE]   =d_point[pointIndex*KEYPOINTS_SIZE];
+    s_point[threadIdx.x*KEYPOINTS_SIZE+1] =d_point[pointIndex*KEYPOINTS_SIZE+1];
+    s_point[threadIdx.x*KEYPOINTS_SIZE+2] =d_point[pointIndex*KEYPOINTS_SIZE+2];
+    s_point[threadIdx.x*KEYPOINTS_SIZE+3] =d_point[pointIndex*KEYPOINTS_SIZE+3];
+    s_point[threadIdx.x*KEYPOINTS_SIZE+4] =d_point[pointIndex*KEYPOINTS_SIZE+4];
+    s_point[threadIdx.x*KEYPOINTS_SIZE+5] =d_point[pointIndex*KEYPOINTS_SIZE+5];
+    s_point[threadIdx.x*KEYPOINTS_SIZE+6] =d_point[pointIndex*KEYPOINTS_SIZE+6];
+    s_point[threadIdx.x*KEYPOINTS_SIZE+7] =d_point[pointIndex*KEYPOINTS_SIZE+7];
+    s_point[threadIdx.x*KEYPOINTS_SIZE+8] =d_point[pointIndex*KEYPOINTS_SIZE+8];
 
+    __syncthreads();
+    float size =s_point[threadIdx.x*KEYPOINTS_SIZE+3];
+    int s = s_point[threadIdx.x*KEYPOINTS_SIZE+6];
+    int x = s_point[threadIdx.x*KEYPOINTS_SIZE+7];
+    int y = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
+#else
     float size =d_point[pointIndex*KEYPOINTS_SIZE+3];
     int s = d_point[pointIndex*KEYPOINTS_SIZE+6];
     int x = d_point[pointIndex*KEYPOINTS_SIZE+7];
     int y = d_point[pointIndex*KEYPOINTS_SIZE+8];
+#endif
+
 
     int o = s/(nOctaveLayers+2);
     int layer = s - o*(nOctaveLayers+2);
 
-    int width = oIndex[o*3];
-    int height = oIndex[o*3+1];
-    int pitch = oIndex[o*3+2];
+    int width = d_oIndex[o*3];
+    int height = d_oIndex[o*3+1];
+    int pitch = d_oIndex[o*3+2];
 
 
     float* currptr;
@@ -915,7 +934,7 @@ __global__ void calcOrientationHist_gpu(float *d_point,const int* oIndex,float* 
     float sigma_ori = SIFT_ORI_SIG_FCTR * scl_octv;
     //'+0.5' for rounding because scl_octv>0
     int radius = SIFT_ORI_RADIUS * scl_octv+0.5,n = SIFT_ORI_HIST_BINS;
-    //float hist[n];
+    float* hists = new float[2*n+4];
 
     //the procress of all point range, a square space.
     int len = (radius*2+1)*(radius*2+1);
@@ -930,10 +949,14 @@ __global__ void calcOrientationHist_gpu(float *d_point,const int* oIndex,float* 
     //the temphist is(n + 2).
     float *X = buf, *Y = X + len, *Mag = X, *Ori = Y + len, *W = Ori + len;
     //gradient direction histogarm
-    float* temphist = W + len,*hist = temphist+n+2;
+    float* temphist = hists + 2;
+    float* hist = temphist + 2+n;
 
-    for( int i = 0; i < n; i++ )
-        temphist[i] = 0.f;
+//    for( int i = 0; i < n; i++ )
+//        temphist[i] = 0.f;
+
+//    if(radius > 16)
+//        printf("radius: %d, point index : %d\n",radius,pointIndex);
 
     for( int i = -radius, k = 0; i <= radius; i++ )
     {
@@ -1000,20 +1023,35 @@ __global__ void calcOrientationHist_gpu(float *d_point,const int* oIndex,float* 
         {
             float bin = j + 0.5f * (hist[l]-hist[r2]) / (hist[l] - 2*hist[j] + hist[r2]);
             bin = bin < 0 ? n + bin : bin >= n ? bin - n : bin;
-
+#ifdef SHAREMEMORY
             if(hist[j] == omax)
                 d_point[pointIndex*KEYPOINTS_SIZE+5] = 360.f - (float)((360.f/n) * bin);
             else{
                 //addpoint;
                 unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
                 idx = (idx>maxNum ? maxNum-1 : idx);
-                d_point[idx*KEYPOINTS_SIZE] = d_point[pointIndex*KEYPOINTS_SIZE];
+                d_point[idx*KEYPOINTS_SIZE]   = s_point[threadIdx.x*KEYPOINTS_SIZE];
+                d_point[idx*KEYPOINTS_SIZE+1] = s_point[threadIdx.x*KEYPOINTS_SIZE+1];
+                d_point[idx*KEYPOINTS_SIZE+2] = s_point[threadIdx.x*KEYPOINTS_SIZE+2];
+                d_point[idx*KEYPOINTS_SIZE+3] = s_point[threadIdx.x*KEYPOINTS_SIZE+3];
+                d_point[idx*KEYPOINTS_SIZE+4] = s_point[threadIdx.x*KEYPOINTS_SIZE+4];
+                d_point[idx*KEYPOINTS_SIZE+5] = 360.f - (float)((360.f/n) * bin);
+            }
+#else
+            if(hist[j] == omax)
+                d_point[pointIndex*KEYPOINTS_SIZE+5] = 360.f - (float)((360.f/n) * bin);
+            else{
+                //addpoint;
+                unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
+                idx = (idx>maxNum ? maxNum-1 : idx);
+                d_point[idx*KEYPOINTS_SIZE]   = d_point[pointIndex*KEYPOINTS_SIZE];
                 d_point[idx*KEYPOINTS_SIZE+1] = d_point[pointIndex*KEYPOINTS_SIZE+1];
                 d_point[idx*KEYPOINTS_SIZE+2] = d_point[pointIndex*KEYPOINTS_SIZE+2];
                 d_point[idx*KEYPOINTS_SIZE+3] = d_point[pointIndex*KEYPOINTS_SIZE+3];
                 d_point[idx*KEYPOINTS_SIZE+4] = d_point[pointIndex*KEYPOINTS_SIZE+4];
                 d_point[idx*KEYPOINTS_SIZE+5] = 360.f - (float)((360.f/n) * bin);
             }
+#endif
         }
     }
 
@@ -1257,6 +1295,7 @@ void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOct
     //init the size of the pyramid images which is nOctave*nLayer
     pyr.resize(nOctaves*(nOctaveLayers + 3));
 
+#if 1
     //optimization points which allocate a big memory
     int w = base.width;
     int h = base.height;
@@ -1270,8 +1309,45 @@ void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOct
             pyr[o*(nOctaveLayers + 3) + i].Allocate(w,h,iAlignUp(w, 128),false);
         }
     }
+#else
+    //optimization points which allocate a big memory
+    int w = base.width;
+    int h = base.height;
+    int pyrDataSize = 0;
+    for( int o = 0; o < nOctaves; o++ )
+    {
+        if(o != 0){
+            w /= 2;
+            h /= 2;
+        }
+        int p = iAlignUp(w,128);
+        pyrDataSize += (nOctaveLayers+3)*p*sizeof(float)*h;
+    }
+    float* d_pyrData;
+    //cudaMalloc(&d_pyrData,pyrDataSize);
+    size_t pitch;
+    safeCall(cudaMallocPitch((void **)&d_pyrData, &pitch, (size_t)4096, (pyrDataSize+4095)/4096*sizeof(float)));
+
+    int memLocation = 0;
+    w = base.width;
+    h = base.height;
+    for( int o = 0; o < nOctaves; o++ )
+    {
+        if(o != 0){
+            w /= 2;
+            h /= 2;
+        }
+        for( int i = 0; i < nOctaveLayers + 3; i++ ){
+            int p = iAlignUp(w,128);
+            pyr[o*(nOctaveLayers + 3) + i].Allocate(w,h,p,false,d_pyrData+memLocation);
+            std::cout<<d_pyrData+memLocation<<" next:"<<pyr[o*(nOctaveLayers + 3) + i].d_data<<std::endl;
+            memLocation += p*sizeof(float)*h;
+        }
+    }
 
 
+
+#endif
     // precompute Gaussian sigmas using the following formula:
     //  \sigma_{total}^2 = \sigma_{i}^2 + \sigma_{i-1}^2
     sig[0] = sigma;
@@ -1410,33 +1486,33 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
         }
     }
 
-
     int num0 = 0;
     safeCall(cudaMemcpyFromSymbol(&num0, d_PointCounter, sizeof(int)));
     num0 = (num0>maxPoints)? maxPoints:num0;
     printf("cuda sift kepoints num : %d \n",num0);
-    int* oIndex = new int[nOctaves*3];
+    int* oIndex = new int[33];
     for(int i =0;i<nOctaves;i++){
         int index = i*(nOctaveLayers+2);
         oIndex[i*3] = dogpyr[index].width;
         oIndex[i*3+1] = dogpyr[index].height;
         oIndex[i*3+2] = dogpyr[index].pitch;
     }
-    int* d_oIndex;
-    cudaMalloc(&d_oIndex,sizeof(int)*nOctaves*3);
-    cudaMemcpy(d_oIndex,oIndex,sizeof(int)*nOctaves*3,cudaMemcpyHostToDevice);
+    safeCall(cudaMemcpyToSymbol(d_oIndex, oIndex, sizeof(int)*33));
+
+//    int* d_oIndex;
+//    cudaMalloc(&d_oIndex,sizeof(int)*nOctaves*3);
+//    cudaMemcpy(d_oIndex,oIndex,sizeof(int)*nOctaves*3,cudaMemcpyHostToDevice);
 
     float* temData;
     safeCall(cudaMemcpyFromSymbol(&temDataSize, temsize, sizeof(int)));
-    int buffSize = temDataSize*4+2*SIFT_ORI_HIST_BINS+2;
-    cudaMalloc(&temData,sizeof(float)*num0*buffSize);
+    int buffSize = temDataSize*4;
+    safeCall(cudaMalloc(&temData,sizeof(float)*num0*buffSize));
 
-    int grid =iDivUp(num0,256);
-    calcOrientationHist_gpu<<<grid,256>>>(d_keypoints,d_oIndex,temData,buffSize,num0,maxPoints,nOctaveLayers);
+    int grid =iDivUp(num0,32);
+    calcOrientationHist_gpu<<<grid,32>>>(d_keypoints,temData,buffSize,num0,maxPoints,nOctaveLayers);
     safeCall( cudaGetLastError() );
 
     safeCall(cudaDeviceSynchronize());
-    cudaFree(d_oIndex);
     cudaFree(temData);
 #endif
 
@@ -1487,23 +1563,23 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
 
 
 
-//    Mat kepoint;
-////    CudaImage &img = gpyr[0];
-////    Mat img_1(img.height,img.width,CV_32F);
-////    safeCall(cudaMemcpy2D(img_1.data,img.width*sizeof(float),gpyr[0].d_data,gpyr[0].pitch*sizeof(float),gpyr[0].width*sizeof(float),(size_t) gpyr[0].height,cudaMemcpyDeviceToHost));
-//    //char *a ="../data/100_7101.JPG";
-//    //char *a ="../data/img2.ppm";
-//    char *a ="../data/100_7101.JPG";
-//    //char *a ="../data/road.png";
-//    Mat img_1 = imread(a);
-//    Mat gray;
-//    img_1.convertTo(gray,DataType<uchar>::type, 1, 0);
-//    drawKeypoints(gray,keypointss,kepoint,cv::Scalar::all(-1),4);
+    Mat kepoint;
+//    CudaImage &img = gpyr[0];
+//    Mat img_1(img.height,img.width,CV_32F);
+//    safeCall(cudaMemcpy2D(img_1.data,img.width*sizeof(float),gpyr[0].d_data,gpyr[0].pitch*sizeof(float),gpyr[0].width*sizeof(float),(size_t) gpyr[0].height,cudaMemcpyDeviceToHost));
+    //char *a ="../data/100_7101.JPG";
+    //char *a ="../data/img2.ppm";
+    //char *a ="../data/100_7101.JPG";
+    char *a ="../data/road.png";
+    Mat img_1 = imread(a);
+    Mat gray;
+    img_1.convertTo(gray,DataType<uchar>::type, 1, 0);
+    drawKeypoints(gray,keypointss,kepoint,cv::Scalar::all(-1),4);
 
 
-//    cvNamedWindow("extract_my",CV_WINDOW_NORMAL);
-//    imshow("extract_my", kepoint);
-//    waitKey(0);
+    cvNamedWindow("extract_my",CV_WINDOW_NORMAL);
+    imshow("extract_my", kepoint);
+    waitKey(0);
 
 //    for(int i = 0;i < keypointss.size();i++)
 //        std::cout<<keypointss[i].pt.x<<" ";

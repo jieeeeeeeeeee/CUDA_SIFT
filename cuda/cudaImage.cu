@@ -10,10 +10,11 @@
 
 void CudaImage::Allocate(int w, int h, int p, bool host, float *devmem, float *hostmem) 
 {
+
   width = w;
   height = h; 
   pitch = p; 
-  d_data = nullptr;
+  d_data = devmem;
   h_data = hostmem; 
   t_data = NULL; 
   if (devmem==NULL) {
