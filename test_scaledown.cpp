@@ -57,8 +57,8 @@ void computeResidual(Mat&gray,Mat &dst,char *str = "residual")
 int main()
 {
     //char *a ="../data/road.png";
-    //char *a ="../data/lena.png";
-    char *a ="../data/100_7101.JPG";
+    char *a ="../data/lena.png";
+    //char *a ="../data/100_7101.JPG";
     cv::Mat src;
     //src = imread("../data/100_7101.JPG",0);
     //src = imread("../data/lena.png",0);

@@ -1295,8 +1295,9 @@ void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOct
     //init the size of the pyramid images which is nOctave*nLayer
     pyr.resize(nOctaves*(nOctaveLayers + 3));
 
-#if 1
-    //optimization points which allocate a big memory
+#define USE_SEPARATION_MEMORYs
+#ifdef USE_SEPARATION_MEMORY
+    //allocate separation memory
     int w = base.width;
     int h = base.height;
     for( int o = 0; o < nOctaves; o++ )
@@ -1321,13 +1322,14 @@ void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOct
             h /= 2;
         }
         int p = iAlignUp(w,128);
-        pyrDataSize += (nOctaveLayers+3)*p*sizeof(float)*h;
+        pyrDataSize += (nOctaveLayers+3)*p*h;
     }
-    float* d_pyrData;
-    //cudaMalloc(&d_pyrData,pyrDataSize);
-    size_t pitch;
-    safeCall(cudaMallocPitch((void **)&d_pyrData, &pitch, (size_t)4096, (pyrDataSize+4095)/4096*sizeof(float)));
-
+    std::cout<<"pyrDataSize: "<<pyrDataSize<<std::endl;
+    float* d_pyrData = NULL;
+    cudaMalloc(&d_pyrData,pyrDataSize*sizeof(float));
+    //size_t pitch;
+    //safeCall(cudaMallocPitch((void **)&d_pyrData, &pitch, (size_t)4096, (pyrDataSize+4095)/4096));
+    //safeCall(cudaMallocPitch((void **)&d_pyrData, &pitch, (size_t)4096, (pyrDataSize+4095)/4096*sizeof(float)));
     int memLocation = 0;
     w = base.width;
     h = base.height;
@@ -1340,12 +1342,15 @@ void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOct
         for( int i = 0; i < nOctaveLayers + 3; i++ ){
             int p = iAlignUp(w,128);
             pyr[o*(nOctaveLayers + 3) + i].Allocate(w,h,p,false,d_pyrData+memLocation);
-            std::cout<<d_pyrData+memLocation<<" next:"<<pyr[o*(nOctaveLayers + 3) + i].d_data<<std::endl;
-            memLocation += p*sizeof(float)*h;
+            //because the d_pyrData is the type of float so the offset of the
+            //pointer is p*h rather than p*h*sizeof(float)
+            memLocation += p*h;
         }
     }
 
-
+//    CudaImage& src = pyr[0*(nOctaveLayers + 3)];
+//    CudaImage& dst = pyr[0*(nOctaveLayers + 3)+1];
+//    dst.copyDevice(src,1);
 
 #endif
     // precompute Gaussian sigmas using the following formula:
