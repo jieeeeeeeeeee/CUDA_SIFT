@@ -928,25 +928,35 @@ void SIFT_Impl::findScaleSpaceExtrema( const std::vector<Mat>& gauss_pyr, const 
 static void calcSIFTDescriptor( const Mat& img, Point2f ptf, float ori, float scl,
                                int d, int n, float* dst )
 {
+    //round the position
     Point pt(cvRound(ptf.x), cvRound(ptf.y));
     float cos_t = cosf(ori*(float)(CV_PI/180));
     float sin_t = sinf(ori*(float)(CV_PI/180));
+    //n=8
     float bins_per_rad = n / 360.f;
     float exp_scale = -1.f/(d * d * 0.5f);
+    //3*scale,normalized 3*scale to 1
     float hist_width = SIFT_DESCR_SCL_FCTR * scl;
     int radius = cvRound(hist_width * 1.4142135623730951f * (d + 1) * 0.5f);
     // Clip the radius to the diagonal of the image to avoid autobuffer too large exception
     radius = std::min(radius, (int) sqrt(((double) img.cols)*img.cols + ((double) img.rows)*img.rows));
     cos_t /= hist_width;
     sin_t /= hist_width;
-
+    //len 为特征点邻域区域内像素的数量，histlen 为直方图的数量，即特征矢量的长度，实际应为d×d×n，之所以每个变量
+    //又加上了2，是因为要为圆周循环留出一定的内存空间
     int i, j, k, len = (radius*2+1)*(radius*2+1), histlen = (d+2)*(d+2)*(n+2);
     int rows = img.rows, cols = img.cols;
 
     AutoBuffer<float> buf(len*6 + histlen);
+    //Memory arrangment:
+    //      Mag
+    // X     Y    Ori    W   RBin  CBin  hist
+    // -_____-_____-_____-_____-_____-_____-__
+    //
     float *X = buf, *Y = X + len, *Mag = Y, *Ori = Mag + len, *W = Ori + len;
     float *RBin = W + len, *CBin = RBin + len, *hist = CBin + len;
 
+    //init *hist = {0},because following code will use '+='
     for( i = 0; i < d+2; i++ )
     {
         for( j = 0; j < d+2; j++ )
@@ -954,18 +964,24 @@ static void calcSIFTDescriptor( const Mat& img, Point2f ptf, float ori, float sc
                 hist[(i*(d+2) + j)*(n+2) + k] = 0.;
     }
 
+    //traverse the boundary rectangle
+    //calculate two improtant data
+    //1.all dx,dy,w,ori,mag in image coordinary
+    //2.all x,y in bins coordinary(a relate coordinary)
     for( i = -radius, k = 0; i <= radius; i++ )
         for( j = -radius; j <= radius; j++ )
         {
             // Calculate sample's histogram array coords rotated relative to ori.
             // Subtract 0.5 so samples that fall e.g. in the center of row 1 (i.e.
             // r_rot = 1.5) have full weight placed in row 1 after interpolation.
+
             float c_rot = j * cos_t - i * sin_t;
             float r_rot = j * sin_t + i * cos_t;
             float rbin = r_rot + d/2 - 0.5f;
             float cbin = c_rot + d/2 - 0.5f;
             int r = pt.y + i, c = pt.x + j;
 
+            //d = 4
             if( rbin > -1 && rbin < d && cbin > -1 && cbin < d &&
                 r > 0 && r < rows - 1 && c > 0 && c < cols - 1 )
             {

@@ -103,7 +103,7 @@ int main()
 
     float* keypoints;
 
-    findScaleSpaceExtrema(gpyr, dogpyr, keypoints);
+    //findScaleSpaceExtrema(gpyr, dogpyr, keypoints);
 
 
 //    std::vector<double> sig(nOctaveLayers + 3);

@@ -123,7 +123,7 @@ extern "C"
 void buildDoGPyramid(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr );
 
 extern "C"
-void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, float* h_keypoints);
+void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, float* d_keypoints, float* h_keypoints);
 
 extern "C"
 void testDiffimage(float *d_Octave0,float *d_Octave1,float *d_diffOctave,int pitch,int height);

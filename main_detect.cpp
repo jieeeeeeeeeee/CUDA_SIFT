@@ -45,8 +45,12 @@ void siftdect(cv::Mat& src,std::vector<cv::KeyPoint> keypoints){
     buildGaussianPyramid(base, gpyr, nOctaves);
     buildDoGPyramid(gpyr, dogpyr);
     float* h_keypoints;
-    findScaleSpaceExtrema(gpyr, dogpyr, h_keypoints);
+    float* d_keypoints;
+    findScaleSpaceExtrema(gpyr, dogpyr,d_keypoints,h_keypoints);
+    //calcDescriptors(gpyr,h_keypoints);
 
+//    cudaFree(d_keypoints);
+//    free(h_keypoints);
 }
 
 #define TIME
@@ -56,9 +60,9 @@ int main()
 {
     std::cout<<"Hello World !"<<std::endl;
     //char *a ="../data/img2.ppm";
-    char *a ="../data/road.png";
+    //char *a ="../data/road.png";
     //char *a ="../data/lena.png";
-    //char *a ="../data/100_7101.JPG";
+    char *a ="../data/100_7101.JPG";
     //char *a ="../data/DSC04034.JPG";
     //char *a ="../data/1080.jpg";
     cv::Mat src;
@@ -93,14 +97,14 @@ int main()
 #endif
 
 
-//#ifdef TIME
-//    t = (double)getTickCount();
-//#endif
-//    siftdect(src,keypoints);
-//#ifdef TIME
-//    t = (double)getTickCount() - t;
-//    printf("second cost : %g ms\n", t*1000./tf);//158
-//#endif
+#ifdef TIME
+    t = (double)getTickCount();
+#endif
+    siftdect(src,keypoints);
+#ifdef TIME
+    t = (double)getTickCount() - t;
+    printf("second cost : %g ms\n", t*1000./tf);//158
+#endif
 
     /////////////////////////////////////
     /// SIFT

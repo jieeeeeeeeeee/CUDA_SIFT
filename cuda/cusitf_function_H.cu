@@ -952,8 +952,8 @@ __global__ void calcOrientationHist_gpu(float *d_point,float* temdata,const int 
     float* temphist = hists + 2;
     float* hist = temphist + 2+n;
 
-//    for( int i = 0; i < n; i++ )
-//        temphist[i] = 0.f;
+    for( int i = 0; i < n; i++ )
+        temphist[i] = 0.f;
 
 //    if(radius > 16)
 //        printf("radius: %d, point index : %d\n",radius,pointIndex);
@@ -1055,7 +1055,7 @@ __global__ void calcOrientationHist_gpu(float *d_point,float* temdata,const int 
         }
     }
 
-    //delete []buf;
+    delete []hists;
 }
 
 // Scale down thread block width
@@ -1324,7 +1324,6 @@ void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOct
         int p = iAlignUp(w,128);
         pyrDataSize += (nOctaveLayers+3)*p*h;
     }
-    std::cout<<"pyrDataSize: "<<pyrDataSize<<std::endl;
     float* d_pyrData = NULL;
     cudaMalloc(&d_pyrData,pyrDataSize*sizeof(float));
     //size_t pitch;
@@ -1440,8 +1439,7 @@ void buildDoGPyramid( std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogp
 
 }
 
-void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, float* h_keypoints){
-    float* d_keypoints;
+void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr,float* d_keypoints ,float* h_keypoints){
     int totPts = 0;
     safeCall(cudaMemcpyToSymbol(d_PointCounter, &totPts, sizeof(int)));
     cudaMalloc(&d_keypoints,sizeof(float)*maxPoints*KEYPOINTS_SIZE);
@@ -1464,7 +1462,7 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
     safeCall(cudaMemcpyToSymbol(pgpyr, h_gpyr, sizeof(float *)*gpyr.size()));
 
     //for every OctaveLayers which number is o*3
-#if 0
+#if 1
     //combine findextrema and oritentation
     dim3 Block(32,8);
     int nOctaves = (int)gpyr.size()/(nOctaveLayers + 3);
@@ -1568,23 +1566,23 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
 
 
 
-    Mat kepoint;
-//    CudaImage &img = gpyr[0];
-//    Mat img_1(img.height,img.width,CV_32F);
-//    safeCall(cudaMemcpy2D(img_1.data,img.width*sizeof(float),gpyr[0].d_data,gpyr[0].pitch*sizeof(float),gpyr[0].width*sizeof(float),(size_t) gpyr[0].height,cudaMemcpyDeviceToHost));
-    //char *a ="../data/100_7101.JPG";
-    //char *a ="../data/img2.ppm";
-    //char *a ="../data/100_7101.JPG";
-    char *a ="../data/road.png";
-    Mat img_1 = imread(a);
-    Mat gray;
-    img_1.convertTo(gray,DataType<uchar>::type, 1, 0);
-    drawKeypoints(gray,keypointss,kepoint,cv::Scalar::all(-1),4);
+//    Mat kepoint;
+////    CudaImage &img = gpyr[0];
+////    Mat img_1(img.height,img.width,CV_32F);
+////    safeCall(cudaMemcpy2D(img_1.data,img.width*sizeof(float),gpyr[0].d_data,gpyr[0].pitch*sizeof(float),gpyr[0].width*sizeof(float),(size_t) gpyr[0].height,cudaMemcpyDeviceToHost));
+//    //char *a ="../data/100_7101.JPG";
+//    //char *a ="../data/img2.ppm";
+//    //char *a ="../data/100_7101.JPG";
+//    char *a ="../data/road.png";
+//    Mat img_1 = imread(a);
+//    Mat gray;
+//    img_1.convertTo(gray,DataType<uchar>::type, 1, 0);
+//    drawKeypoints(gray,keypointss,kepoint,cv::Scalar::all(-1),4);
 
 
-    cvNamedWindow("extract_my",CV_WINDOW_NORMAL);
-    imshow("extract_my", kepoint);
-    waitKey(0);
+//    cvNamedWindow("extract_my",CV_WINDOW_NORMAL);
+//    imshow("extract_my", kepoint);
+//    waitKey(0);
 
 //    for(int i = 0;i < keypointss.size();i++)
 //        std::cout<<keypointss[i].pt.x<<" ";
@@ -1598,6 +1596,10 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
     std::cout<<unique_nums<<std::endl;
 #endif
 #endif
+
+}
+
+void calcDescriptors(std::vector<CudaImage>& gpyr,float* d_keypoints){
 
 }
 
