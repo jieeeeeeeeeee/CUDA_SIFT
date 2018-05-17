@@ -93,8 +93,8 @@ int main( int argc, char** argv )
 #endif
 
 
-    Mat img_object = imread("/home/jie/workspace/projects/CUDA_SIfT/Qt_cuda_sift/data/100_7100.JPG", IMREAD_GRAYSCALE );
-    Mat img_scene  = imread("/home/jie/workspace/projects/CUDA_SIfT/Qt_cuda_sift/data/100_7101.JPG", IMREAD_GRAYSCALE );
+    Mat img_object = imread("../data/img1.png", IMREAD_GRAYSCALE );
+    Mat img_scene  = imread("../data/img2.png", IMREAD_GRAYSCALE );
     if( !img_object.data || !img_scene.data )
     { std::cout<< " --(!) Error reading images " << std::endl; return -1; }
     //////////////////////

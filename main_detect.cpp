@@ -19,8 +19,19 @@
 //#define IMAGE_SHOW
 using namespace cv;
 using namespace std;
+int findSamePointsIndex(cv::KeyPoint& keypoint,std::vector<cv::KeyPoint>&keypoints);
+static inline void
+unpackOctave(const KeyPoint& kpt, int& octave, int& layer, float& scale)
+{
+    octave = kpt.octave & 255;
+    layer = (kpt.octave >> 8) & 255;
+    octave = octave < 128 ? octave : (-128 | octave);
+    scale = octave >= 0 ? 1.f/(1 << octave) : (float)(1 << -octave);
+}
 
-void siftdect(cv::Mat& src,std::vector<cv::KeyPoint> keypoints){
+
+
+void siftdect(cv::Mat& src,std::vector<cv::KeyPoint>& keypoints,cv::Mat& descriptors){
 
 #ifdef NODOUBLEIMAGE
     int firstOctave = 0, actualNOctaves = 0, actualNLayers = 0;
@@ -44,13 +55,10 @@ void siftdect(cv::Mat& src,std::vector<cv::KeyPoint> keypoints){
     std::vector<CudaImage> gpyr,dogpyr;
     buildGaussianPyramid(base, gpyr, nOctaves);
     buildDoGPyramid(gpyr, dogpyr);
-    float* h_keypoints;
-    float* d_keypoints;
-    findScaleSpaceExtrema(gpyr, dogpyr,d_keypoints,h_keypoints);
-    //calcDescriptors(gpyr,h_keypoints);
 
-//    cudaFree(d_keypoints);
-//    free(h_keypoints);
+
+    findScaleSpaceExtrema(gpyr, dogpyr,keypoints,descriptors);
+
 }
 
 #define TIME
@@ -86,21 +94,24 @@ int main()
     src.convertTo(tmp, CV_32FC1);
 
     std::vector<cv::KeyPoint> keypoints;
+    cv::Mat descriptors;
 #ifdef TIME
     double t, tf = getTickFrequency();
     t = (double)getTickCount();
 #endif
-    siftdect(src,keypoints);
+    siftdect(src,keypoints,descriptors);
 #ifdef TIME
     t = (double)getTickCount() - t;
     printf("first cost : %g ms\n", t*1000./tf);//246ms
 #endif
 
 
+
+
 #ifdef TIME
     t = (double)getTickCount();
 #endif
-    siftdect(src,keypoints);
+    siftdect(src,keypoints,descriptors);
 #ifdef TIME
     t = (double)getTickCount() - t;
     printf("second cost : %g ms\n", t*1000./tf);//158
@@ -137,11 +148,11 @@ int main()
 
     std::cout<<"sift keypoints num :"<<keypoints_1.size()<<std::endl;
     Mat kepoint;
-    drawKeypoints(img_1, keypoints_1,kepoint,cv::Scalar::all(-1),4);
-    cvNamedWindow("extract",CV_WINDOW_NORMAL);
-    imshow("extract", kepoint);
-    //等待任意按键按下
-    waitKey(0);
+//    drawKeypoints(img_1, keypoints_1,kepoint,cv::Scalar::all(-1),4);
+//    cvNamedWindow("extract",CV_WINDOW_NORMAL);
+//    imshow("extract", kepoint);
+//    //等待任意按键按下
+//    waitKey(0);
 
 //    for(int i = 0;i < keypoints_1.size();i++)
 //        std::cout<<keypoints_1[i].pt.x<<" ";
@@ -159,6 +170,75 @@ int main()
 #endif
 
 
+#define TEST_DESCRIPTOR
+#ifdef TEST_DESCRIPTOR
 
+
+
+//    int k = 0;
+//    std::map<int,int> map;
+//    for(int i = 0;i<keypoints_1.size();i++)
+//    {
+//        int idx = findSamePointsIndex(keypoints_1[i],keypoints);
+
+//        if(idx){
+//            //printf("%d -- %d \n",i,idx);
+//            map.insert(std::pair<int,int>(i,idx));
+//            k++;
+//        }
+//    }
+//    //printf("k: %d -- %d \n",k,(int)keypoints_1.size());
+//    if(keypoints_1.size()==k)
+//        printf("all match !");
+//    else
+//        printf("not all match !");
+
+//    cv::Mat difImg;
+//    difImg.create(k,128,CV_8UC1);
+//    memset(difImg.data,0,difImg.cols*difImg.rows*sizeof(uchar));
+
+
+//    std::map<int,int>::iterator iter;
+//    int i = 0;
+//    for(iter = map.begin();iter!=map.end();iter++)
+//    {
+//        float* psift = descriptors_1.ptr<float>(iter->first);
+//        float* pcuda = descriptors.ptr<float>(iter->second);
+//        uchar* dif = difImg.ptr<uchar>(i);
+//        for(int j = 0;j<difImg.cols;j++){
+//            dif[j] = std::abs(psift[j] - pcuda[j])*50;
+//            if(dif[j]>100){
+//                KeyPoint kpt = keypoints_1[iter->first];
+//                int octave, layer;
+//                float scale;
+//                unpackOctave(kpt, octave, layer, scale);
+//                Point2f ptf(kpt.pt.x*scale, kpt.pt.y*scale);
+//                printf("x:%f,y:%f,angle: %f\n",ptf.x,ptf.y,kpt.angle);
+//            }
+//        }
+//        i++;
+//    }
+
+//    cvNamedWindow("dif",CV_WINDOW_NORMAL);
+//    imshow("dif", difImg);
+//    waitKey(0);
+
+
+
+#endif
+
+
+
+    return 0;
+}
+int findSamePointsIndex(cv::KeyPoint& keypoint,std::vector<cv::KeyPoint>&keypoints){
+
+    for(int i = 0;i<keypoints.size();i++)
+    {
+        if(keypoint.pt == keypoints[i].pt && std::abs(keypoint.angle-keypoints[i].angle)<0.01f)
+        {
+            return i;
+        }
+    }
     return 0;
 }

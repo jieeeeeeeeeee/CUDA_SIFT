@@ -738,7 +738,7 @@ static bool adjustLocalExtrema( const std::vector<Mat>& dog_pyr, KeyPoint& kpt, 
     }
 
     //octv is the octave index begin from 0
-    //why is (1<<octv),if has the doubleImgage will it work?
+    //why is (1<<octv),if has the doubleImgage will it works?
     kpt.pt.x = (c + xc) * (1 << octv);
     kpt.pt.y = (r + xr) * (1 << octv);
     kpt.octave = octv + (layer << 8) + (cvRound((xi + 0.5)*255) << 16);
@@ -937,6 +937,10 @@ static void calcSIFTDescriptor( const Mat& img, Point2f ptf, float ori, float sc
     float exp_scale = -1.f/(d * d * 0.5f);
     //3*scale,normalized 3*scale to 1
     float hist_width = SIFT_DESCR_SCL_FCTR * scl;
+
+    //printf(" %d,%d,%f ",pt.x,pt.y,img.at<sift_wt>(0,1));
+    //printf(" %d,%d,%f,%f,%f",pt.x,pt.y,img.at<sift_wt>(pt.y,  pt.x),ori,scl);
+
     int radius = cvRound(hist_width * 1.4142135623730951f * (d + 1) * 0.5f);
     // Clip the radius to the diagonal of the image to avoid autobuffer too large exception
     radius = std::min(radius, (int) sqrt(((double) img.cols)*img.cols + ((double) img.rows)*img.rows));
@@ -1094,6 +1098,7 @@ static void calcSIFTDescriptor( const Mat& img, Point2f ptf, float ori, float sc
         float obin = (Ori[k] - ori)*bins_per_rad;
         float mag = Mag[k]*W[k];
 
+
         int r0 = cvFloor( rbin );
         int c0 = cvFloor( cbin );
         int o0 = cvFloor( obin );
@@ -1105,6 +1110,11 @@ static void calcSIFTDescriptor( const Mat& img, Point2f ptf, float ori, float sc
             o0 += n;
         if( o0 >= n )
             o0 -= n;
+
+//        if(pt.x == 1936 && pt.y ==744 ){
+//            printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,Ori[k]);
+//        }
+
 
         // histogram update using tri-linear interpolation
         float v_r1 = mag*rbin, v_r0 = mag - v_r1;
@@ -1125,6 +1135,12 @@ static void calcSIFTDescriptor( const Mat& img, Point2f ptf, float ori, float sc
         hist[idx+(d+3)*(n+2)] += v_rco110;
         hist[idx+(d+3)*(n+2)+1] += v_rco111;
     }
+
+//    if(pt.x == 1936 && pt.y ==744 ){
+//        for(int i =0;i<360;i++)
+//            printf(" %f ",hist[i]);
+//        printf("k: %d",k);
+//    }
 
     // finalize histogram, since the orientation histograms are circular
     for( i = 0; i < d; i++ )
@@ -1222,6 +1238,10 @@ static void calcSIFTDescriptor( const Mat& img, Point2f ptf, float ori, float sc
     for( ; k < len; k++ )
     {
         dst[k] = saturate_cast<uchar>(dst[k]*nrm2);
+//        if(pt.x == 21 && pt.y ==257 ){
+//            printf("k: %d,%f \n",k,dst[k]);
+//        }
+
     }
 #else
     float nrm1 = 0;

@@ -123,7 +123,7 @@ extern "C"
 void buildDoGPyramid(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr );
 
 extern "C"
-void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, float* d_keypoints, float* h_keypoints);
+void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, std::vector<KeyPoint> &keypoints, cv::Mat& descriptors);
 
 extern "C"
 void testDiffimage(float *d_Octave0,float *d_Octave1,float *d_diffOctave,int pitch,int height);
@@ -146,6 +146,7 @@ __device__ int temsize;
 //36 suppose the max Octave is 12
 __constant__ int d_oIndex[36];
 
+static const int BLOCK_SIZE_ONE_DIM = 32;
 
 
 #endif
