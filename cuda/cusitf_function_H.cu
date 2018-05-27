@@ -1735,8 +1735,8 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,float* d_decriptor,int poi
     if(pointIndex>=pointsNum)
         return;
 
-#define SHAREMEMORYs
-#ifdef SHAREMEMORY
+#define SHAREMEMORY
+#ifdef SHAREMEMORYa
     __shared__ float s_point[BLOCK_SIZE_ONE_DIM*KEYPOINTS_SIZE];
     s_point[threadIdx.x*KEYPOINTS_SIZE]   =d_point[pointIndex*KEYPOINTS_SIZE];
     s_point[threadIdx.x*KEYPOINTS_SIZE+1] =d_point[pointIndex*KEYPOINTS_SIZE+1];
@@ -1756,6 +1756,7 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,float* d_decriptor,int poi
     int y = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
 #else
     float size =d_point[pointIndex*KEYPOINTS_SIZE+3];
+    float ori = d_point[pointIndex*KEYPOINTS_SIZE+5];
     int s = d_point[pointIndex*KEYPOINTS_SIZE+6];
     int x = d_point[pointIndex*KEYPOINTS_SIZE+7];
     int y = d_point[pointIndex*KEYPOINTS_SIZE+8];
@@ -1795,18 +1796,15 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,float* d_decriptor,int poi
     //len 为特征点邻域区域内像素的数量，histlen 为直方图的数量，即特征矢量的长度，实际应为d×d×n，之所以每个变量
     //又加上了2，是因为要为圆周循环留出一定的内存空间
     int i, j, k, len = (radius*2+1)*(radius*2+1);
-    float dst[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS];
+    __shared__ float dst1[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS*BLOCK_SIZE_ONE_DIM];
+    float* dst = dst1+threadIdx.x*d*d*n;
+    //float dst[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS];
     int rows = height, cols = width;
     //float *buf = new float[len*6 + histlen];
     const int histlen = (SIFT_DESCR_WIDTH+2)*(SIFT_DESCR_WIDTH+2)*(SIFT_DESCR_HIST_BINS+2);
     float hist[histlen];
-    //Memory arrangment:
-    //      Mag
-    // X     Y    Ori    W   RBin  CBin  hist
-    // -_____-_____-_____-_____-_____-_____-__
-    //
-//    float *X = buf, *Y = X + len, *Mag = Y, *Ori = Mag + len, *W = Ori + len;
-//    float *RBin = W + len, *CBin = RBin + len;
+    //__shared__ float hist[histlen*BLOCK_SIZE_ONE_DIM];
+
 
     //init *hist = {0},because following code will use '+='
     for( i = 0; i < d+2; i++ )
@@ -1838,16 +1836,16 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,float* d_decriptor,int poi
                 r > 0 && r < rows - 1 && c > 0 && c < cols - 1 )
             {
 
-                double dx = (double)(currptr[i*pitch+j+1] - currptr[i*pitch+j-1]);
+                float dx = (float)(currptr[i*pitch+j+1] - currptr[i*pitch+j-1]);
                 //the positive direction is from bottom to top contrary to the image /
                 //from top to bottom.So dy = y-1 - (y+1).
-                double dy = (double)(currptr[(i-1)*pitch+j] - currptr[(i+1)*pitch+j]);
+                float dy = (float)(currptr[(i-1)*pitch+j] - currptr[(i+1)*pitch+j]);
                 // float dx = (float)(img.at<sift_wt>(r, c+1) - img.at<sift_wt>(r, c-1));
                 // float dy = (float)(img.at<sift_wt>(r-1, c) - img.at<sift_wt>(r+1, c));
                 //X[k] = dx; Y[k] = dy; RBin[k] = rbin; CBin[k] = cbin;
                // W[k] = (c_rot * c_rot + r_rot * r_rot)*exp_scale;
 
-                double wk,ok,mk;
+                float wk,ok,mk;
                 wk = __expf((c_rot * c_rot + r_rot * r_rot)*exp_scale);
                 ok = atan2f(dy,dx);
                 ok = (ok*180/CV_PI);
@@ -1855,8 +1853,8 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,float* d_decriptor,int poi
                 mk = sqrtf(dy*dy+dx*dx);
 
                 //float rbin = RBin[k], cbin = CBin[k];
-                double obin = (ok - ori)*bins_per_rad;
-                double mag = mk*wk;
+                float obin = (ok - ori)*bins_per_rad;
+                float mag = mk*wk;
 
 
                 int r0 =  floor(rbin);
@@ -1906,13 +1904,6 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,float* d_decriptor,int poi
 //    }
 
 
-//    len = k;
-//    k = 0;
-//    for( ; k < len; k++ )
-//    {
-
-//    }
-
     // finalize histogram, since the orientation histograms are circular
     for( i = 0; i < d; i++ )
         for( j = 0; j < d; j++ )
@@ -1943,6 +1934,7 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,float* d_decriptor,int poi
         dst[i] = val;
         nrm2 += val*val;
     }
+    __syncthreads();
     nrm2 = SIFT_INT_DESCR_FCTR/max(sqrtf(nrm2), FLT_EPSILON);
     k = 0;
     for( ; k < len; k++ )
@@ -1953,8 +1945,6 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,float* d_decriptor,int poi
 //            printf("k: %d,%f \n",k,d_decriptor[pointIndex*len + k]);
 //        }
     }
-    //delete []buf;
-
 }
 
 

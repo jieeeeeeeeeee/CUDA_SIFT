@@ -136,16 +136,15 @@ int main()
     t = (double)getTickCount();
 #endif
     f2d->detect(img_1, keypoints_1);
-#ifdef TIME
-    t = (double)getTickCount() - t;
-    printf("opencv sift cost : %g ms\n", t*1000./tf);//158
-#endif
-
 
     //Calculate descriptors (feature vectors)
     Mat descriptors_1, descriptors_2;
     f2d->compute(img_1, keypoints_1, descriptors_1);
 
+#ifdef TIME
+    t = (double)getTickCount() - t;
+    printf("opencv sift cost : %g ms\n", t*1000./tf);//158
+#endif
     std::cout<<"sift keypoints num :"<<keypoints_1.size()<<std::endl;
     Mat kepoint;
 //    drawKeypoints(img_1, keypoints_1,kepoint,cv::Scalar::all(-1),4);
@@ -175,53 +174,53 @@ int main()
 
 
 
-//    int k = 0;
-//    std::map<int,int> map;
-//    for(int i = 0;i<keypoints_1.size();i++)
-//    {
-//        int idx = findSamePointsIndex(keypoints_1[i],keypoints);
+    int k = 0;
+    std::map<int,int> map;
+    for(int i = 0;i<keypoints_1.size();i++)
+    {
+        int idx = findSamePointsIndex(keypoints_1[i],keypoints);
 
-//        if(idx){
-//            //printf("%d -- %d \n",i,idx);
-//            map.insert(std::pair<int,int>(i,idx));
-//            k++;
-//        }
-//    }
-//    //printf("k: %d -- %d \n",k,(int)keypoints_1.size());
-//    if(keypoints_1.size()==k)
-//        printf("all match !");
-//    else
-//        printf("not all match !");
+        if(idx){
+            //printf("%d -- %d \n",i,idx);
+            map.insert(std::pair<int,int>(i,idx));
+            k++;
+        }
+    }
+    //printf("k: %d -- %d \n",k,(int)keypoints_1.size());
+    if(keypoints_1.size()==k)
+        printf("all match !");
+    else
+        printf("not all match !");
 
-//    cv::Mat difImg;
-//    difImg.create(k,128,CV_8UC1);
-//    memset(difImg.data,0,difImg.cols*difImg.rows*sizeof(uchar));
+    cv::Mat difImg;
+    difImg.create(k,128,CV_8UC1);
+    memset(difImg.data,0,difImg.cols*difImg.rows*sizeof(uchar));
 
 
-//    std::map<int,int>::iterator iter;
-//    int i = 0;
-//    for(iter = map.begin();iter!=map.end();iter++)
-//    {
-//        float* psift = descriptors_1.ptr<float>(iter->first);
-//        float* pcuda = descriptors.ptr<float>(iter->second);
-//        uchar* dif = difImg.ptr<uchar>(i);
-//        for(int j = 0;j<difImg.cols;j++){
-//            dif[j] = std::abs(psift[j] - pcuda[j])*50;
-//            if(dif[j]>100){
-//                KeyPoint kpt = keypoints_1[iter->first];
-//                int octave, layer;
-//                float scale;
-//                unpackOctave(kpt, octave, layer, scale);
-//                Point2f ptf(kpt.pt.x*scale, kpt.pt.y*scale);
-//                printf("x:%f,y:%f,angle: %f\n",ptf.x,ptf.y,kpt.angle);
-//            }
-//        }
-//        i++;
-//    }
+    std::map<int,int>::iterator iter;
+    int i = 0;
+    for(iter = map.begin();iter!=map.end();iter++)
+    {
+        float* psift = descriptors_1.ptr<float>(iter->first);
+        float* pcuda = descriptors.ptr<float>(iter->second);
+        uchar* dif = difImg.ptr<uchar>(i);
+        for(int j = 0;j<difImg.cols;j++){
+            dif[j] = std::abs(psift[j] - pcuda[j])*50;
+            if(dif[j]>100){
+                KeyPoint kpt = keypoints_1[iter->first];
+                int octave, layer;
+                float scale;
+                unpackOctave(kpt, octave, layer, scale);
+                Point2f ptf(kpt.pt.x*scale, kpt.pt.y*scale);
+                printf("x:%f,y:%f,angle: %f\n",ptf.x,ptf.y,kpt.angle);
+            }
+        }
+        i++;
+    }
 
-//    cvNamedWindow("dif",CV_WINDOW_NORMAL);
-//    imshow("dif", difImg);
-//    waitKey(0);
+    cvNamedWindow("dif",CV_WINDOW_NORMAL);
+    imshow("dif", difImg);
+    waitKey(0);
 
 
 

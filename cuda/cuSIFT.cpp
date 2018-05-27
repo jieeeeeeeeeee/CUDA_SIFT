@@ -9,8 +9,6 @@ void createInitialImage_gpu(const Mat &src, CudaImage &base, float sigma, bool d
 
 
 namespace cusift {
-
-
 cuSIFT::cuSIFT():
   nOctaveLayers(3),
   contrastThreshold(0.04),
