@@ -30,7 +30,7 @@ int main()
     //src = imread("../data/lena.png",0);
     //tmp.convertTo(src, CV_32FC1);
 
-    int sigma = 2;
+    int sigma = 3.8;
 
     Mat dst;
     int width = src.cols;
@@ -99,7 +99,7 @@ int main()
         uchar *q = dst.ptr<uchar>(i);
         uchar *d = residualMat.ptr<uchar>(i);
         for(int j = 0;j<dis.cols;j++){
-            d[j] = abs(p[j] - q[j]) * 30;
+            d[j] = abs(p[j] - q[j]) * 100;
         }
     }
     cvNamedWindow("residual",CV_WINDOW_NORMAL);
@@ -140,6 +140,50 @@ int main()
     cv::namedWindow("test",0);
     cv::imshow("test",gray1);
     cv::waitKey(0);
+
+
+#ifdef CHECK_RESIDUAL
+    Mat residualMat1(dst.size(),dst.type());
+
+    for(int i = 0;i<dis.rows;i++)
+    {
+        uchar *p = gray1.ptr<uchar>(i);
+        uchar *q = dst.ptr<uchar>(i);
+        uchar *d = residualMat1.ptr<uchar>(i);
+        for(int j = 0;j<dis.cols;j++){
+            d[j] = abs(p[j] - q[j]) * 100;
+        }
+    }
+    cvNamedWindow("residual1",CV_WINDOW_NORMAL);
+    imshow("residual1",residualMat1);
+    waitKey(0);
+#endif
+
+
+
+
+#ifdef CHECK_RESIDUAL
+    Mat residualMat2(dst.size(),dst.type());
+
+    for(int i = 0;i<dis.rows;i++)
+    {
+        uchar *p = gray1.ptr<uchar>(i);
+        uchar *q = gray.ptr<uchar>(i);
+        uchar *d = residualMat2.ptr<uchar>(i);
+        for(int j = 0;j<dis.cols;j++){
+            d[j] = abs(p[j] - q[j]) * 100;
+        }
+    }
+    cvNamedWindow("residual2",CV_WINDOW_NORMAL);
+    imshow("residual2",residualMat2);
+    waitKey(0);
+#endif
+
+
+
+
+
+
 #endif
 
 

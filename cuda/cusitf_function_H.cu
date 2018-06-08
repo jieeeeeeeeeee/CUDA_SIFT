@@ -2346,7 +2346,6 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
     safeCall(cudaMemcpyToSymbol(d_PointCounter, &totPts, sizeof(int)));
     cudaMalloc(&d_keypoints,sizeof(float)*maxPoints*KEYPOINTS_SIZE);
 
-
     const int threshold = cvFloor(0.5 * contrastThreshold / nOctaveLayers * 255 * SIFT_FIXPT_SCALE);
 
     //std::cout<<"my threshold = "<<threshold<<std::endl;

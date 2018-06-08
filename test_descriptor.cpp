@@ -7,7 +7,7 @@
 #include <opencv2/cudafilters.hpp>
 #include <cuda.h>
 
-#define USE_MY_SIFTs
+#define USE_MY_SIFT
 
 #ifdef USE_SIFT OR USE_SURF
 #include "opencv2/features2d.hpp"
@@ -172,7 +172,7 @@ int main()
 #ifdef TEST_DESCRIPTOR
 
 
-
+    int difcount=0;
     int k = 0;
     std::map<int,int> map;
     for(int i = 0;i<keypoints_1.size();i++)
@@ -212,10 +212,14 @@ int main()
                 unpackOctave(kpt, octave, layer, scale);
                 Point2f ptf(kpt.pt.x*scale, kpt.pt.y*scale);
                 printf("x:%f,y:%f,angle: %f\n",ptf.x,ptf.y,kpt.angle);
+                difcount++;
+                break;
             }
         }
         i++;
     }
+
+    std::cout<<"same descriptor rate:"<<float(keypoints_1.size()-difcount)/keypoints_1.size()<<std::endl;
 
     cvNamedWindow("dif",CV_WINDOW_NORMAL);
     imshow("dif", difImg);

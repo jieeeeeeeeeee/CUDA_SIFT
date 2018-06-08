@@ -9,7 +9,7 @@
 
 #define USE_MY_SIFTs
 
-#ifdef USE_SIFT OR USE_SURF
+#ifndef USE_MY_SIFT
 #include "opencv2/features2d.hpp"
 #endif
 #ifdef USE_MY_SIFT
@@ -27,6 +27,103 @@ unpackOctave(const KeyPoint& kpt, int& octave, int& layer, float& scale)
     layer = (kpt.octave >> 8) & 255;
     octave = octave < 128 ? octave : (-128 | octave);
     scale = octave >= 0 ? 1.f/(1 << octave) : (float)(1 << -octave);
+}
+
+
+bool uniquex(const KeyPoint& a,const KeyPoint& b)
+{
+    bool x;
+    if(a.pt.x == b.pt.x && a.pt.y == b.pt.y)
+        x = true;
+    else
+        x = false;
+    return x;
+}
+bool sortx(const KeyPoint& a,const KeyPoint& b)
+{
+    bool x;
+    if(a.pt.x < b.pt.x)
+        x = true;
+    else
+        x = false;
+    return x;
+}
+
+int evaluateDetector(std::vector<KeyPoint> &one,std::vector<KeyPoint> &another,int stride=3){
+
+    int sum=0;
+    int offset=0;
+    for(int i = 0;i<one.size();i++)
+    {
+        KeyPoint x,y;
+        x = one[i];
+        int index = i<another.size()?i:another.size()-1;
+        y = another[index];
+        if(x.pt.x==y.pt.x&&x.pt.y==y.pt.y)
+            sum+=1;
+        else{
+            for(int j = -stride;j<stride;j++)
+            {
+                int idx = i+j;
+                if(idx>0 && idx<another.size()-1)
+                    y = another[idx];
+                if(x.pt.x==y.pt.x&&x.pt.y==y.pt.y)
+                    sum+=1;
+            }
+        }
+
+    }
+    return sum;
+}
+
+int evaluateDetectorBuforce(std::vector<KeyPoint> &one,std::vector<KeyPoint> &another){
+
+    int sum=0;
+
+    for(int i = 0;i<one.size();i++)
+    {
+        KeyPoint x,y;
+        x = one[i];
+        for(int j = 0;j<another.size();j++)
+        {
+            y = another[j];
+            if(x.pt.x==y.pt.x&&x.pt.y==y.pt.y)
+            {
+                sum++;
+                break;
+            }
+        }
+        if(i % 1000 == 0)
+        {
+            std::cout<<"run in:"<<i<<std::endl;
+        }
+    }
+    return sum;
+}
+
+int evaluateDetectorBuforce(std::vector<KeyPoint> &one,int size,std::vector<KeyPoint> &another,int size1,float e){
+
+    int sum=0;
+
+    for(int i = 0;i<size;i++)
+    {
+        KeyPoint x,y;
+        x = one[i];
+        for(int j = 0;j<size1;j++)
+        {
+            y = another[j];
+            if(abs(x.pt.x-y.pt.x)<e&&abs(x.pt.y-y.pt.y)<e)
+            {
+                sum++;
+                break;
+            }
+        }
+        if(i % 1000 == 0)
+        {
+            std::cout<<"run in:"<<i<<std::endl;
+        }
+    }
+    return sum;
 }
 
 
@@ -107,11 +204,12 @@ int main()
 
 
 
-
+    std::vector<cv::KeyPoint> keypoints1;
+    cv::Mat descriptors1;
 #ifdef TIME
     t = (double)getTickCount();
 #endif
-    siftdect(src,keypoints,descriptors);
+    siftdect(src,keypoints1,descriptors1);
 #ifdef TIME
     t = (double)getTickCount() - t;
     printf("second cost : %g ms\n", t*1000./tf);//158
@@ -145,14 +243,63 @@ int main()
     t = (double)getTickCount() - t;
     printf("opencv sift cost : %g ms\n", t*1000./tf);//158
 #endif
-    std::cout<<"sift keypoints num :"<<keypoints_1.size()<<std::endl;
-    Mat kepoint;
-//    drawKeypoints(img_1, keypoints_1,kepoint,cv::Scalar::all(-1),4);
-//    cvNamedWindow("extract",CV_WINDOW_NORMAL);
-//    imshow("extract", kepoint);
+
+//    /************* show *******************/
+
+//    std::cout<<"sift keypoints num :"<<keypoints_1.size()<<std::endl;
+//    Mat kepointImg_sift;
+//    drawKeypoints(img_1, keypoints_1,kepointImg_sift,cv::Scalar::all(0),4);
+//    cvNamedWindow("kepointImg_sift",CV_WINDOW_NORMAL);
+//    imshow("kepointImg_sift", kepointImg_sift);
+//    //等待任意按键按下
+//    //waitKey(0);
+
+//    std::vector<cv::KeyPoint> keypoints2;
+//    Mat kepointImg_cu;
+//    drawKeypoints(img_1, keypoints1,kepointImg_cu,cv::Scalar::all(255),4);
+//    cvNamedWindow("kepointImg_cu",CV_WINDOW_NORMAL);
+//    imshow("kepointImg_cu", kepointImg_cu);
+//    //等待任意按键按下
+//    //waitKey(0);
+
+
+//    //cudasift cover origonal sift
+//    Mat cuCoversift;
+//    drawKeypoints(kepointImg_sift, keypoints1,cuCoversift,cv::Scalar::all(255),4);
+//    cvNamedWindow("cuCoversift",CV_WINDOW_NORMAL);
+//    imshow("cuCoversift", cuCoversift);
+//    //等待任意按键按下
+//    //waitKey(0);
+
+//    //origonal sift cover cudasift
+//    Mat siftCovercu;
+//    drawKeypoints(kepointImg_cu, keypoints_1,siftCovercu,cv::Scalar::all(0),4);
+//    cvNamedWindow("siftCovercu",CV_WINDOW_NORMAL);
+//    imshow("siftCovercu", siftCovercu);
 //    //等待任意按键按下
 //    waitKey(0);
 
+
+//    /************ compare ***************/
+
+//    sort(keypoints_1.begin(),keypoints_1.end(),sortx);
+//    int unique_nums,unique_nums1;
+//    unique_nums = std::unique(keypoints_1.begin(),keypoints_1.end(),uniquex) - keypoints_1.begin();
+////    for(int i = 0;i < unique_nums;i++)
+////        std::cout<<keypoints_1[i].response<<" ";
+//    std::cout<<unique_nums<<std::endl;
+
+
+//    sort(keypoints1.begin(),keypoints1.end(),sortx);
+//    //int unique_nums;
+//    unique_nums1 = std::unique(keypoints1.begin(),keypoints1.end(),uniquex) - keypoints1.begin();
+////    for(int i = 0;i < unique_nums;i++)
+////        std::cout<<keypoints1[i].response<<" ";
+//    std::cout<<unique_nums1<<std::endl;
+
+//    int sameCount = evaluateDetectorBuforce(keypoints_1,unique_nums,keypoints1,unique_nums1,0.2);
+
+//    std::cout<<"sameCount:"<<sameCount<<" rate:"<<(float)sameCount/unique_nums<<std::endl;
 //    for(int i = 0;i < keypoints_1.size();i++)
 //        std::cout<<keypoints_1[i].pt.x<<" ";
 //    std::cout<<std::endl;
@@ -168,11 +315,8 @@ int main()
 #endif
 
 
-#define TEST_DESCRIPTOR
+#define TEST_DESCRIPTORs
 #ifdef TEST_DESCRIPTOR
-
-
-
     int k = 0;
     std::map<int,int> map;
     for(int i = 0;i<keypoints_1.size();i++)
@@ -221,11 +365,7 @@ int main()
     imshow("dif", difImg);
     waitKey(0);
 
-
-
 #endif
-
-
 
     return 0;
 }

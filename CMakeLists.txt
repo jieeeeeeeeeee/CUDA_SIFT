@@ -62,5 +62,11 @@ if (BUILD_TEST)
   add_executable(main_detect main_detect.cpp)
   target_link_libraries(main_detect ${LABRARY})
 
+  add_executable(test_keypoint test_keypoint.cpp)
+  target_link_libraries(test_keypoint ${LABRARY})
+
+  add_executable(test_descriptor test_descriptor.cpp)
+  target_link_libraries(test_descriptor ${LABRARY})
+
 endif (BUILD_TEST)
 

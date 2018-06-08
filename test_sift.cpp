@@ -7,7 +7,7 @@
 #include <opencv2/cudafilters.hpp>
 #include <cuda.h>
 
-#define USE_MY_SIFTs
+#define USE_MY_SIFT
 
 #ifdef USE_SIFT OR USE_SURF
 #include "opencv2/features2d.hpp"
@@ -107,11 +107,12 @@ int main()
 
 
 
-
+    std::vector<cv::KeyPoint> keypoints1;
+    cv::Mat descriptors1;
 #ifdef TIME
     t = (double)getTickCount();
 #endif
-    siftdect(src,keypoints,descriptors);
+    siftdect(src,keypoints1,descriptors1);
 #ifdef TIME
     t = (double)getTickCount() - t;
     printf("second cost : %g ms\n", t*1000./tf);//158
@@ -146,12 +147,21 @@ int main()
     printf("opencv sift cost : %g ms\n", t*1000./tf);//158
 #endif
     std::cout<<"sift keypoints num :"<<keypoints_1.size()<<std::endl;
-    Mat kepoint;
-//    drawKeypoints(img_1, keypoints_1,kepoint,cv::Scalar::all(-1),4);
-//    cvNamedWindow("extract",CV_WINDOW_NORMAL);
-//    imshow("extract", kepoint);
-//    //等待任意按键按下
-//    waitKey(0);
+    Mat kepointImg_sift;
+    drawKeypoints(img_1, keypoints_1,kepointImg_sift,cv::Scalar::all(-1),4);
+    cvNamedWindow("kepointImg_sift",CV_WINDOW_NORMAL);
+    imshow("kepointImg_sift", kepointImg_sift);
+    //等待任意按键按下
+    waitKey(0);
+
+    Mat kepointImg_cu;
+    drawKeypoints(img_1, keypoints1,kepointImg_cu,cv::Scalar::all(-1),4);
+    cvNamedWindow("kepointImg_cu",CV_WINDOW_NORMAL);
+    imshow("kepointImg_cu", kepointImg_cu);
+    //等待任意按键按下
+    waitKey(0);
+
+
 
 //    for(int i = 0;i < keypoints_1.size();i++)
 //        std::cout<<keypoints_1[i].pt.x<<" ";
@@ -168,11 +178,8 @@ int main()
 #endif
 
 
-#define TEST_DESCRIPTOR
+#define TEST_DESCRIPTORs
 #ifdef TEST_DESCRIPTOR
-
-
-
     int k = 0;
     std::map<int,int> map;
     for(int i = 0;i<keypoints_1.size();i++)
@@ -221,11 +228,7 @@ int main()
     imshow("dif", difImg);
     waitKey(0);
 
-
-
 #endif
-
-
 
     return 0;
 }

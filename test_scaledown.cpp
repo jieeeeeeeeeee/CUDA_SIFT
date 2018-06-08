@@ -60,9 +60,9 @@ int main()
     char *a ="../data/lena.png";
     //char *a ="../data/100_7101.JPG";
     cv::Mat src;
-    //src = imread("../data/100_7101.JPG",0);
+    src = imread("../data/100_7101.JPG",0);
     //src = imread("../data/lena.png",0);
-    src = imread(a,0);
+    //src = imread(a,0);
     //src = imread("../data/DSC04034.JPG",0);
     int width = src.cols;
     int height = src.rows;
