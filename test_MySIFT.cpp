@@ -93,17 +93,18 @@ int main( int argc, char** argv )
 #endif
 
 
-    Mat img_object = imread("../data/img1.png", IMREAD_GRAYSCALE );
-    Mat img_scene  = imread("../data/img2.png", IMREAD_GRAYSCALE );
+    Mat img_object = imread("../data/img2.ppm", IMREAD_GRAYSCALE );
+    Mat img_scene  = imread("../data/img3.ppm", IMREAD_GRAYSCALE );
     if( !img_object.data || !img_scene.data )
     { std::cout<< " --(!) Error reading images " << std::endl; return -1; }
+#ifdef USE_SURF
     //////////////////////
     /// SURF
     /////////////////////
-#ifdef USE_SURF
+
     //-- Step 1: Detect the keypoints and extract descriptors using SURF
     int minHessian = 400;
-    Ptr<SURF> detector = SURF::create( minHessian );
+    Ptr<SURF> detector = SURF::create(  );
     std::vector<KeyPoint> keypoints_object, keypoints_scene;
     Mat descriptors_object, descriptors_scene;
     detector->detectAndCompute( img_object, Mat(), keypoints_object, descriptors_object );

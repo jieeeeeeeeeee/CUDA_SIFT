@@ -16,10 +16,10 @@ find_package(Qt5Core)
 
 #find OpenCV
 #which is release version
-set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build)
+#set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build)
 
-#OpenCV Labrary which is debug version build2
-#set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build1)
+#OpenCV Labrary which is debug version build1
+set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build1)
 #set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build3)
 find_package(OpenCV REQUIRED)
 
@@ -67,6 +67,9 @@ if (BUILD_TEST)
 
   add_executable(test_descriptor test_descriptor.cpp)
   target_link_libraries(test_descriptor ${LABRARY})
+
+  add_executable(test_cv_main test_cv_main.cpp)
+  target_link_libraries(test_cv_main ${LABRARY})
 
 endif (BUILD_TEST)
 

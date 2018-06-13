@@ -241,6 +241,7 @@ int main(int argc, const char* argv[])
 {
   char * p1 = "/home/jie/workspace/projects/CUDA_SIfT/Qt_cuda_sift/data/100_7100.JPG";
   char * p2 = "/home/jie/workspace/projects/CUDA_SIfT/Qt_cuda_sift/data/100_7101.JPG";
-  GetMatchPointCount(p1,p2);
+  int count = GetMatchPointCount(p1,p2);
+  std::cout<<count<<std::endl;
   return 0;
 }
