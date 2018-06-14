@@ -89,14 +89,17 @@
 
 //}
 
-#include"cuGlobal.h"
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <opencv2/opencv.hpp>
+#include <opencv2/xfeatures2d.hpp>
+#include <opencv2/opencv.hpp>
 
 namespace cv { namespace cuda { namespace device
 {
     namespace sift
     {
-        void bindImgTex(PtrStepSzb img);
+        //void bindImgTex(PtrStepSzb img);
 
         //void compute_descriptors_gpu(PtrStepSz<float4> descriptors, const float* featureX, const float* featureY, const float* featureSize, const float* featureDir, int nFeatures);
         //extern void differenceImg_gpu(PtrStepSzf next,PtrStepSzf prev,PtrStepSzf diff);
@@ -104,10 +107,7 @@ namespace cv { namespace cuda { namespace device
     }
 }}}
 
-__global__ void differenceImg_gpu()
-{
 
-}
 
 namespace cv { namespace cuda { namespace device
 {
@@ -116,13 +116,13 @@ namespace sift
 using namespace cv::cuda;
 
 
-
-
-
-void differenceImg_gpu()
+__global__ void differenceImg_gpu1(PtrStepf next,PtrStepf prev,PtrStepf diff)
 {
-    std::cout<<"static function "<<std::endl;
+    printf("kernel \n");
 }
+
+
+
 //void differenceImg_gpu(PtrStepSzf next,PtrStepSzf prev,PtrStepSzf diff)
 //{
 

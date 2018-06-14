@@ -254,7 +254,7 @@
 int main()
 {
     cv::cuda::GpuMat src;
-    src.upload(imread("../data/road.png",IMREAD_GRAYSCALE));
+    src.upload(cv::imread("../data/road.png",cv::IMREAD_GRAYSCALE));
 //    cv::namedWindow("show");
 //    cv::imshow("show",cv::Mat(src));
 //    cv::waitKey(0);
@@ -262,9 +262,9 @@ int main()
     cv::cuda::SIFT_CUDA sift;
     sift(src,cv::cuda::GpuMat(),keypointsGPU,descriptsGPU);
     std::cout<<"Asd!"<<std::endl;
-    Ptr<cuda::ORB> d_orb = cuda::ORB::create();
+//    Ptr<cuda::ORB> d_orb = cuda::ORB::create();
 
-    cv::cuda::SURF_CUDA surf;
+//    cv::cuda::SURF_CUDA surf;
 
     // detecting keypoints & computing descriptors
 

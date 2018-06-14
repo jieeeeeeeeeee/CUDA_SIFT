@@ -1,36 +1,32 @@
 #ifndef CUSIFT_H
 #define CUSIFT_H
 
-#include "cuImage.h"
+//#include "cuImage.h"
 
 
 
-namespace cusift {
+//namespace cusift {
 
-class cuSIFT{
-public:
-    cuSIFT();
-    void detectAndCompute(Mat &src, std::vector<KeyPoint> keypoints);
-private:
-    int nOctaveLayers;
-    double contrastThreshold;
-    double edgeThreshold;
-    double sigma;
+//class cuSIFT{
+//public:
+//    cuSIFT();
+//    void detectAndCompute(Mat &src, std::vector<KeyPoint> keypoints);
+//private:
+//    int nOctaveLayers;
+//    double contrastThreshold;
+//    double edgeThreshold;
+//    double sigma;
 
-};
+//};
 
-}
+//}
+
+#include"cuGlobal.h"
 
 
 namespace cv{
 
 namespace cuda {
-
-
-
-
-
-
 
 /*
  *
