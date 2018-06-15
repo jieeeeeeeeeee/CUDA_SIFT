@@ -39,6 +39,7 @@
 
 
 #include "cuSIFT.h"
+#include <opencv2/cudev.hpp>
 #include "cuSIFT_D.cu"
 
 namespace cv {
@@ -85,16 +86,18 @@ static const float SIFT_DESCR_MAG_THR = 0.2f;
 static const float SIFT_INT_DESCR_FCTR = 512.f;
 
 
-void differenceImg_gpu(const PtrStepf& next,const PtrStepf& prev,const PtrStepf& diff)
+void differenceImg_gpu(const PtrStepSzf& next,const PtrStepSzf& prev,PtrStepSzf diff)
 {
 //    static int num = 0;
 //    differenceImg_gpu<<<1,1>>>();
 //    std::cout<<"static function "<<num++<<std::endl;
 //    diff.create(next.rows,next.cols,next.type());
-//    dim3 Block(32,8);
-//    dim3 Grid(iDivUp(next.step1(),Block.x),iDivUp(next.rows,Block.y));
-    //differenceImg_gpu1<<<1,1>>>(next,prev,diff);
+    dim3 Block(32,8);
+    dim3 Grid(iDivUp(next.step/next.elemSize(),Block.x),iDivUp(next.rows,Block.y));
+    differenceImg_gpu1<<<Grid,Block>>>(next,prev,diff,next.step/next.elemSize());
 
+    CV_CUDEV_SAFE_CALL( cudaGetLastError() );
+    CV_CUDEV_SAFE_CALL( cudaDeviceSynchronize() );
 }
 
 
@@ -207,14 +210,15 @@ void buildDoGPyramid(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpyr,int 
 #if 0
             cuda::subtract(next, prev, diff, noArray(), DataType<float>::type);
 #else
+            diff.create(next.rows,next.cols,next.type());
             differenceImg_gpu(next,prev,diff);
 #endif
-//                GpuMat test;
-//                diff.convertTo(test, DataType<uchar>::type, 100, 0);
-//                cv::Mat show(test);
-//                cv::namedWindow("show",WINDOW_GUI_EXPANDED);
-//                cv::imshow("show",show);
-//                cv::waitKey(0);
+            GpuMat test;
+            diff.convertTo(test, DataType<uchar>::type, 100, 0);
+            cv::Mat show(test);
+            cv::namedWindow("show",WINDOW_GUI_EXPANDED);
+            cv::imshow("show",show);
+            cv::waitKey(0);
         }
     }
 }

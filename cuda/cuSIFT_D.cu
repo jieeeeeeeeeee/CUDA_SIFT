@@ -1,4 +1,4 @@
-//#include "cuImage.h"
+﻿//#include "cuImage.h"
 
 //namespace cusift {
 ///******************************* Defs and macros *****************************/
@@ -95,6 +95,7 @@
 #include <opencv2/xfeatures2d.hpp>
 #include <opencv2/opencv.hpp>
 
+
 namespace cv { namespace cuda { namespace device
 {
     namespace sift
@@ -116,9 +117,18 @@ namespace sift
 using namespace cv::cuda;
 
 
-__global__ void differenceImg_gpu1(PtrStepf next,PtrStepf prev,PtrStepf diff)
+__global__ void differenceImg_gpu1(PtrStepSzf next,PtrStepSzf prev,PtrStepSzf diff,int pitch)
 {
-    printf("kernel \n");
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if(y<next.rows)
+    {
+        diff(y,x) = next(y,x)-prev(y,x);
+
+    }
+    if(y*pitch+x<5)
+        printf("%f\n",next(y,x));
+
 }
 
 
