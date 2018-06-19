@@ -95,6 +95,7 @@
 #include <opencv2/xfeatures2d.hpp>
 #include <opencv2/opencv.hpp>
 #include <device_functions.hpp>
+#include <opencv2/cudev.hpp>
 
 namespace cv { namespace cuda { namespace device
 {
@@ -648,7 +649,8 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,int p_pitch,float* d_decri
 
                 float wk,ok,mk;
                 wk = __expf((c_rot * c_rot + r_rot * r_rot)*exp_scale);
-                ok = atan2f(dy,dx);
+                ok = atan2(dy,dx);
+                //ok = cv::cudev::atan2();
                 ok = (ok*180/CV_PI);
                 ok = ok<0? ok+360:ok;
                 mk = sqrtf(dy*dy+dx*dx);

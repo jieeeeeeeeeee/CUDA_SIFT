@@ -202,7 +202,7 @@ void buildDoGPyramid(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpyr,int 
 //2.Two dimension vector:vector<GpuMat> send to kernel: using
 //3.The sum of the keypoints num: using atomAdd()
 
-void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpyr, GpuMat& keypoints,float contrastThreshold,int nOctaveLayers,int maxFeatures)
+void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpyr, GpuMat& keypoints,GpuMat& descriptorsGpu,float contrastThreshold,int nOctaveLayers,int maxFeatures)
 {
 
     ensureSizeIsEnough(SIFT_CUDA::ROWS_COUNT, maxFeatures, CV_32FC1, keypoints);
@@ -275,6 +275,7 @@ void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpy
     num1 = (num1>maxFeatures)? maxFeatures:num1;
     printf("cuda sift kepoints num after calOritation : %d \n",num1);
 
+    //ensureSizeIsEnough(nFeatures, descriptorSize, CV_32F, descriptors);
 
     //alloc for d_decriptor
     float* d_descriptor;
@@ -286,42 +287,52 @@ void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpy
     CV_CUDEV_SAFE_CALL( cudaGetLastError() );
     CV_CUDEV_SAFE_CALL( cudaDeviceSynchronize() );
 
+    Mat descriptors;
+    descriptors.create(num1,128,CV_32FC1);
+    safeCall(cudaMemcpy((float*)descriptors.data,d_descriptor,num1*128*sizeof(float),cudaMemcpyDeviceToHost));
+
+    cudaFree(d_descriptor);
+
+    descriptorsGpu.create(descriptors.rows,descriptors.cols,CV_32FC1);
+    descriptorsGpu.upload(descriptors);
 
 
+//    Mat keypointsCPU(keypoints);
+//    float* h_keypoints = (float*)keypointsCPU.ptr();
+//    std::vector<cv::KeyPoint>keypointss;
+//    keypointss.resize(num1);
+//    for(int i = 0;i<keypointss.size();++i)
+//    {
+//        keypointss[i].pt.x =  h_keypoints[i];
+//        keypointss[i].pt.y =  h_keypoints[i+keypointsCPU.step1()*1];
+//        keypointss[i].octave =  h_keypoints[i+keypointsCPU.step1()*2];
+//        keypointss[i].size =  h_keypoints[i+keypointsCPU.step1()*3];
+//        keypointss[i].response =  h_keypoints[i+keypointsCPU.step1()*4];
+//        keypointss[i].angle =  h_keypoints[i+keypointsCPU.step1()*5];
+//    }
+//    int firstOctave = -1;
+//    if( firstOctave < 0 )
+//        for( size_t i = 0; i < keypointss.size(); i++ )
+//        {
+//            KeyPoint& kpt = keypointss[i];
+//            float scale = 1.f/(float)(1 << -firstOctave);
+//            kpt.octave = (kpt.octave & ~255) | ((kpt.octave + firstOctave) & 255);
+//            kpt.pt *= scale;
+//            kpt.size *= scale;
+//        }
+//    Mat kepoint;
+//    Mat dst(gpyr[6]),img;
+//    dst.convertTo(img, DataType<uchar>::type, 1, 0);
+//    drawKeypoints(img, keypointss,kepoint,cv::Scalar::all(-1),4);
+//    cvNamedWindow("new cuda sift",CV_WINDOW_NORMAL);
+//    imshow("new cuda sift", kepoint);
+//    //等待任意按键按下
+//    //waitKey(0);
 
-
-    Mat keypointsCPU(keypoints);
-    float* h_keypoints = (float*)keypointsCPU.ptr();
-    std::vector<cv::KeyPoint>keypointss;
-    keypointss.resize(num1);
-    for(int i = 0;i<keypointss.size();++i)
-    {
-        keypointss[i].pt.x =  h_keypoints[i];
-        keypointss[i].pt.y =  h_keypoints[i+keypointsCPU.step1()*1];
-        keypointss[i].octave =  h_keypoints[i+keypointsCPU.step1()*2];
-        keypointss[i].size =  h_keypoints[i+keypointsCPU.step1()*3];
-        keypointss[i].response =  h_keypoints[i+keypointsCPU.step1()*4];
-        keypointss[i].angle =  h_keypoints[i+keypointsCPU.step1()*5];
-    }
-    int firstOctave = -1;
-    if( firstOctave < 0 )
-        for( size_t i = 0; i < keypointss.size(); i++ )
-        {
-            KeyPoint& kpt = keypointss[i];
-            float scale = 1.f/(float)(1 << -firstOctave);
-            kpt.octave = (kpt.octave & ~255) | ((kpt.octave + firstOctave) & 255);
-            kpt.pt *= scale;
-            kpt.size *= scale;
-        }
-    Mat kepoint;
-    Mat dst(gpyr[6]),img;
-    dst.convertTo(img, DataType<uchar>::type, 1, 0);
-    drawKeypoints(img, keypointss,kepoint,cv::Scalar::all(-1),4);
-    cvNamedWindow("new cuda sift",CV_WINDOW_NORMAL);
-    imshow("new cuda sift", kepoint);
-    //等待任意按键按下
-    //waitKey(0);
-
+//    Mat ss;
+//    descriptors.convertTo(ss, DataType<uchar>::type, 1, 0);
+//    cvNamedWindow("new descriptors",CV_WINDOW_NORMAL);
+//    imshow("new descriptors", ss);
 
 
 }
@@ -412,7 +423,7 @@ public:
         if( !useProvidedKeypoints )
         {
             //t = (double)getTickCount();
-            findScaleSpaceExtrema(gpyr, dogpyr, keypoints,sift.contrastThreshold,sift.nOctaveLayers,sift.maxFeatures);
+            findScaleSpaceExtrema(gpyr, dogpyr, keypoints,descriptors,sift.contrastThreshold,sift.nOctaveLayers,sift.maxFeatures);
 //            KeyPointsFilter::removeDuplicatedSorted( keypoints );
 
 //            if( nfeatures > 0 )

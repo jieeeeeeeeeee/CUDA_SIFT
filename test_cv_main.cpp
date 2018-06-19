@@ -291,26 +291,11 @@ void siftdect(cv::Mat& src,std::vector<cv::KeyPoint>& keypoints,cv::Mat& descrip
     findScaleSpaceExtrema(gpyr, dogpyr,keypoints,descriptors);
 
 }
-
+#define TIME
 int main()
 {
     cv::cuda::GpuMat src_gpu;
-    src_gpu.upload(cv::imread("../data/road.png",cv::IMREAD_GRAYSCALE));
-//    cv::namedWindow("show");
-//    cv::imshow("show",cv::Mat(src));
-//    cv::waitKey(0);
-    cv::cuda::GpuMat keypointsGPU,descriptsGPU;
-    cv::cuda::SIFT_CUDA sift;
-    sift(src_gpu,cv::cuda::GpuMat(),keypointsGPU,descriptsGPU);
-    std::cout<<"Asd!"<<std::endl;
-//    Ptr<cuda::ORB> d_orb = cuda::ORB::create();
-
-//    cv::cuda::SURF_CUDA surf;
-
-    // detecting keypoints & computing descriptors
-
-    //surf(img1, GpuMat(), keypoints1GPU, descriptors1GPU);
-
+    src_gpu.upload(cv::imread("../data/100_7101.JPG",cv::IMREAD_GRAYSCALE));
     ///////////////////////////////
     /// old cuda sift
     ///////////////////////////////
@@ -334,7 +319,7 @@ int main()
     siftdect(src,keypoints,descriptors);
 #ifdef TIME
     t = (double)getTickCount() - t;
-    printf("first cost : %g ms\n", t*1000./tf);//246ms
+    printf("old cuda sift cost : %g ms\n", t*1000./tf);//246ms
 #endif
 
     //std::cout<<"sift keypoints num :"<<keypoints.size()<<std::endl;
@@ -345,6 +330,75 @@ int main()
     //等待任意按键按下
     //waitKey(0);
     //////////////////////////////////////////////////
+
+#ifdef TIME
+
+    t = (double)getTickCount();
+#endif
+
+    ////////////////////////////////
+    /// new cuda sift
+    ////////////////////////////////
+//    cv::namedWindow("show");
+//    cv::imshow("show",cv::Mat(src));
+//    cv::waitKey(0);
+    cv::cuda::GpuMat keypointsGPU,descriptsGPU;
+    cv::cuda::SIFT_CUDA sift;
+    sift(src_gpu,cv::cuda::GpuMat(),keypointsGPU,descriptsGPU);
+
+//    Ptr<cuda::ORB> d_orb = cuda::ORB::create();
+
+//    cv::cuda::SURF_CUDA surf;
+
+    // detecting keypoints & computing descriptors
+
+    //surf(img1, GpuMat(), keypoints1GPU, descriptors1GPU);
+
+
+    Mat keypointsCPU(keypointsGPU);
+    float* h_keypoints = (float*)keypointsCPU.ptr();
+    std::vector<cv::KeyPoint>keypointss;
+    keypointss.resize(28000);
+    for(int i = 0;i<keypointss.size();++i)
+    {
+        keypointss[i].pt.x =  h_keypoints[i];
+        keypointss[i].pt.y =  h_keypoints[i+keypointsCPU.step1()*1];
+        keypointss[i].octave =  h_keypoints[i+keypointsCPU.step1()*2];
+        keypointss[i].size =  h_keypoints[i+keypointsCPU.step1()*3];
+        keypointss[i].response =  h_keypoints[i+keypointsCPU.step1()*4];
+        keypointss[i].angle =  h_keypoints[i+keypointsCPU.step1()*5];
+    }
+    int firstOctave = -1;
+    if( firstOctave < 0 )
+        for( size_t i = 0; i < keypointss.size(); i++ )
+        {
+            KeyPoint& kpt = keypointss[i];
+            float scale = 1.f/(float)(1 << -firstOctave);
+            kpt.octave = (kpt.octave & ~255) | ((kpt.octave + firstOctave) & 255);
+            kpt.pt *= scale;
+            kpt.size *= scale;
+        }
+#ifdef TIME
+    t = (double)getTickCount() - t;
+    printf("new cuda sift cost : %g ms\n", t*1000./tf);//246ms
+#endif
+    Mat kepoint2;
+    Mat dst(src_gpu),img;
+    dst.convertTo(img, DataType<uchar>::type, 1, 0);
+    drawKeypoints(img, keypointss,kepoint2,cv::Scalar::all(-1),4);
+    cvNamedWindow("new cuda sift",CV_WINDOW_NORMAL);
+    imshow("new cuda sift", kepoint2);
+    //等待任意按键按下
+    //waitKey(0);
+
+    Mat descriptors_show(descriptsGPU);
+    Mat ss;
+    descriptors_show.convertTo(ss, DataType<uchar>::type, 1, 0);
+    cvNamedWindow("new descriptors",CV_WINDOW_NORMAL);
+    imshow("new descriptors", ss);
+    //////////////////////////////////////////////////
+
+
 
 
 

@@ -6,8 +6,9 @@
 #include <opencv2/xfeatures2d.hpp>
 #include <opencv2/cudafilters.hpp>
 #include <cuda.h>
+#include "cuda/cuSIFT.h"
 
-#define USE_MY_SIFT
+#define USE_MY_SIFTs
 
 #ifdef USE_SIFT OR USE_SURF
 #include "opencv2/features2d.hpp"
@@ -68,21 +69,17 @@ int main()
 {
     std::cout<<"Hello World !"<<std::endl;
     //char *a ="../data/img2.ppm";
-    char *a ="../data/road.png";
+    //char *a ="../data/road.png";
     //char *a ="../data/lena.png";
-    //char *a ="../data/100_7101.JPG";
+    char *a ="../data/100_7101.JPG";
     //char *a ="../data/DSC04034.JPG";
     //char *a ="../data/1080.jpg";
-    cv::Mat src;
-    src = imread(a);
-
-//    resize(src,src,Size(src.cols*2,src.rows*2),0,0);
-//    Mat gray;
-//    src.convertTo(gray,DataType<uchar>::type);
-//    namedWindow("ss",CV_WINDOW_NORMAL);
-//    imshow("ss",gray);
-//    waitKey(0);
-
+    cv::cuda::GpuMat src_gpu;
+    src_gpu.upload(cv::imread("../data/road.png",cv::IMREAD_GRAYSCALE));
+    ///////////////////////////////
+    /// old cuda sift
+    ///////////////////////////////
+    Mat src(src_gpu);
     int width = src.cols;
     int height = src.rows;
     if(!src.data)
@@ -102,20 +99,84 @@ int main()
     siftdect(src,keypoints,descriptors);
 #ifdef TIME
     t = (double)getTickCount() - t;
-    printf("first cost : %g ms\n", t*1000./tf);//246ms
+    printf("old cuda sift cost : %g ms\n", t*1000./tf);//246ms
 #endif
 
-
-
+    //std::cout<<"sift keypoints num :"<<keypoints.size()<<std::endl;
+    Mat kepoint;
+    drawKeypoints(src, keypoints,kepoint,cv::Scalar::all(-1),4);
+    cvNamedWindow("old cuda sift",CV_WINDOW_NORMAL);
+    imshow("old cuda sift", kepoint);
+    //等待任意按键按下
+    //waitKey(0);
+    //////////////////////////////////////////////////
 
 #ifdef TIME
+
     t = (double)getTickCount();
 #endif
-    siftdect(src,keypoints,descriptors);
+
+    ////////////////////////////////
+    /// new cuda sift
+    ////////////////////////////////
+//    cv::namedWindow("show");
+//    cv::imshow("show",cv::Mat(src));
+//    cv::waitKey(0);
+    cv::cuda::GpuMat keypointsGPU,descriptsGPU;
+    cv::cuda::SIFT_CUDA sift;
+    sift(src_gpu,cv::cuda::GpuMat(),keypointsGPU,descriptsGPU);
+
+//    Ptr<cuda::ORB> d_orb = cuda::ORB::create();
+
+//    cv::cuda::SURF_CUDA surf;
+
+    // detecting keypoints & computing descriptors
+
+    //surf(img1, GpuMat(), keypoints1GPU, descriptors1GPU);
+
+
+    Mat keypointsCPU(keypointsGPU);
+    float* h_keypoints = (float*)keypointsCPU.ptr();
+    std::vector<cv::KeyPoint>keypointss;
+    keypointss.resize(1000);
+    for(int i = 0;i<keypointss.size();++i)
+    {
+        keypointss[i].pt.x =  h_keypoints[i];
+        keypointss[i].pt.y =  h_keypoints[i+keypointsCPU.step1()*1];
+        keypointss[i].octave =  h_keypoints[i+keypointsCPU.step1()*2];
+        keypointss[i].size =  h_keypoints[i+keypointsCPU.step1()*3];
+        keypointss[i].response =  h_keypoints[i+keypointsCPU.step1()*4];
+        keypointss[i].angle =  h_keypoints[i+keypointsCPU.step1()*5];
+    }
+    int firstOctave = -1;
+    if( firstOctave < 0 )
+        for( size_t i = 0; i < keypointss.size(); i++ )
+        {
+            KeyPoint& kpt = keypointss[i];
+            float scale = 1.f/(float)(1 << -firstOctave);
+            kpt.octave = (kpt.octave & ~255) | ((kpt.octave + firstOctave) & 255);
+            kpt.pt *= scale;
+            kpt.size *= scale;
+        }
 #ifdef TIME
     t = (double)getTickCount() - t;
-    printf("second cost : %g ms\n", t*1000./tf);//158
+    printf("new cuda sift cost : %g ms\n", t*1000./tf);//246ms
 #endif
+    Mat kepoint2;
+    Mat dst(src_gpu),img;
+    dst.convertTo(img, DataType<uchar>::type, 1, 0);
+    drawKeypoints(img, keypointss,kepoint2,cv::Scalar::all(-1),4);
+    cvNamedWindow("new cuda sift",CV_WINDOW_NORMAL);
+    imshow("new cuda sift", kepoint2);
+    //等待任意按键按下
+    //waitKey(0);
+
+    Mat descriptors_show(descriptsGPU);
+    Mat ss;
+    descriptors_show.convertTo(ss, DataType<uchar>::type, 1, 0);
+    cvNamedWindow("new descriptors",CV_WINDOW_NORMAL);
+    imshow("new descriptors", ss);
+    //////////////////////////////////////////////////
 
     /////////////////////////////////////
     /// SIFT
@@ -146,7 +207,7 @@ int main()
     printf("opencv sift cost : %g ms\n", t*1000./tf);//158
 #endif
     std::cout<<"sift keypoints num :"<<keypoints_1.size()<<std::endl;
-    Mat kepoint;
+    //Mat kepoint;
 //    drawKeypoints(img_1, keypoints_1,kepoint,cv::Scalar::all(-1),4);
 //    cvNamedWindow("extract",CV_WINDOW_NORMAL);
 //    imshow("extract", kepoint);
@@ -177,7 +238,7 @@ int main()
     std::map<int,int> map;
     for(int i = 0;i<keypoints_1.size();i++)
     {
-        int idx = findSamePointsIndex(keypoints_1[i],keypoints);
+        int idx = findSamePointsIndex(keypoints_1[i],keypointss);
 
         if(idx){
             //printf("%d -- %d \n",i,idx);
@@ -187,9 +248,9 @@ int main()
     }
     //printf("k: %d -- %d \n",k,(int)keypoints_1.size());
     if(keypoints_1.size()==k)
-        printf("all match !");
+        printf("all match ! \n");
     else
-        printf("not all match !");
+        printf("not all match ! match rate : %f\n",(float)k/keypoints_1.size());
 
     cv::Mat difImg;
     difImg.create(k,128,CV_8UC1);
@@ -201,7 +262,7 @@ int main()
     for(iter = map.begin();iter!=map.end();iter++)
     {
         float* psift = descriptors_1.ptr<float>(iter->first);
-        float* pcuda = descriptors.ptr<float>(iter->second);
+        float* pcuda = descriptors_show.ptr<float>(iter->second);
         uchar* dif = difImg.ptr<uchar>(i);
         for(int j = 0;j<difImg.cols;j++){
             dif[j] = std::abs(psift[j] - pcuda[j])*50;
@@ -237,7 +298,7 @@ int findSamePointsIndex(cv::KeyPoint& keypoint,std::vector<cv::KeyPoint>&keypoin
 
     for(int i = 0;i<keypoints.size();i++)
     {
-        if(keypoint.pt == keypoints[i].pt && std::abs(keypoint.angle-keypoints[i].angle)<0.01f)
+        if(abs(keypoint.pt.x-keypoints[i].pt.x)<=0.001&&abs(keypoint.pt.y-keypoints[i].pt.y)<=0.001 && std::abs(keypoint.angle-keypoints[i].angle)<0.01f)
         {
             return i;
         }

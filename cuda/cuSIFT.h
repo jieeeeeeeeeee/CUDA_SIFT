@@ -168,6 +168,7 @@ public:
     float keypointsRatio;
     int maxFeatures;
 
+
 };
 
 }
