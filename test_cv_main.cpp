@@ -250,17 +250,58 @@
 #include "opencv2/core.hpp"
 #include "opencv2/imgproc.hpp"
 
+#include "cuda/cuGlobal.h"
+#include "cuda/cuImage.h"
+#include "cuda/cudaImage.h"
+#include "cuda/cusitf_function_H.h"
+#include <opencv2/opencv.hpp>
+#include <opencv2/xfeatures2d.hpp>
+#include <opencv2/cudafilters.hpp>
+#include <cuda.h>
+#include "sift/sift_cv_gpu.h"
+#define USE_MY_SIFT
+
+
+void siftdect(cv::Mat& src,std::vector<cv::KeyPoint>& keypoints,cv::Mat& descriptors){
+
+#ifdef NODOUBLEIMAGE
+    int firstOctave = 0, actualNOctaves = 0, actualNLayers = 0;
+#else
+    int firstOctave = -1, actualNOctaves = 0, actualNLayers = 0;
+#endif
+
+
+#ifdef FIND_DOGERRORTEST
+#else
+    CudaImage base;
+#endif
+    createInitialImage(src,base,(float)1.6,firstOctave<0);
+
+    int nOctaveLayers = 3;
+#ifdef TEST_FIRST_OCTAVE
+    int nOctaves = cvRound(std::log( (double)std::min( base.width, base.height ) ) / std::log(2.) - 8) - firstOctave;
+#else
+    int nOctaves = cvRound(std::log( (double)std::min( base.width, base.height ) ) / std::log(2.) - 2) - firstOctave;
+#endif
+    std::vector<CudaImage> gpyr,dogpyr;
+    buildGaussianPyramid(base, gpyr, nOctaves);
+    buildDoGPyramid(gpyr, dogpyr);
+
+
+    findScaleSpaceExtrema(gpyr, dogpyr,keypoints,descriptors);
+
+}
 
 int main()
 {
-    cv::cuda::GpuMat src;
-    src.upload(cv::imread("../data/road.png",cv::IMREAD_GRAYSCALE));
+    cv::cuda::GpuMat src_gpu;
+    src_gpu.upload(cv::imread("../data/road.png",cv::IMREAD_GRAYSCALE));
 //    cv::namedWindow("show");
 //    cv::imshow("show",cv::Mat(src));
 //    cv::waitKey(0);
     cv::cuda::GpuMat keypointsGPU,descriptsGPU;
     cv::cuda::SIFT_CUDA sift;
-    sift(src,cv::cuda::GpuMat(),keypointsGPU,descriptsGPU);
+    sift(src_gpu,cv::cuda::GpuMat(),keypointsGPU,descriptsGPU);
     std::cout<<"Asd!"<<std::endl;
 //    Ptr<cuda::ORB> d_orb = cuda::ORB::create();
 
@@ -269,6 +310,84 @@ int main()
     // detecting keypoints & computing descriptors
 
     //surf(img1, GpuMat(), keypoints1GPU, descriptors1GPU);
+
+    ///////////////////////////////
+    /// old cuda sift
+    ///////////////////////////////
+    Mat src(src_gpu);
+    int width = src.cols;
+    int height = src.rows;
+    if(!src.data)
+    {
+        printf("no photo");
+    }
+
+    Mat tmp;
+    src.convertTo(tmp, CV_32FC1);
+
+    std::vector<cv::KeyPoint> keypoints;
+    cv::Mat descriptors;
+#ifdef TIME
+    double t, tf = getTickFrequency();
+    t = (double)getTickCount();
+#endif
+    siftdect(src,keypoints,descriptors);
+#ifdef TIME
+    t = (double)getTickCount() - t;
+    printf("first cost : %g ms\n", t*1000./tf);//246ms
+#endif
+
+    //std::cout<<"sift keypoints num :"<<keypoints.size()<<std::endl;
+    Mat kepoint;
+    drawKeypoints(src, keypoints,kepoint,cv::Scalar::all(-1),4);
+    cvNamedWindow("old cuda sift",CV_WINDOW_NORMAL);
+    imshow("old cuda sift", kepoint);
+    //等待任意按键按下
+    //waitKey(0);
+    //////////////////////////////////////////////////
+
+
+
+    ///////////////////////////////
+    /// original sift
+    ///////////////////////////////
+    //Create SIFT class pointer
+#ifdef USE_MY_SIFT
+    Ptr<Feature2D> f2d = xfeatures2d::cvGpu::SIFT::create();
+#else
+    Ptr<Feature2D> f2d = xfeatures2d::SIFT::create();
+#endif
+    //读入图片
+    Mat img_1 = src;
+
+    //Detect the keypoints
+    std::vector<KeyPoint> keypoints_1, keypoints_2;
+
+#ifdef TIME
+    t = (double)getTickCount();
+#endif
+    f2d->detect(img_1, keypoints_1);
+
+    //Calculate descriptors (feature vectors)
+    Mat descriptors_1, descriptors_2;
+    f2d->compute(img_1, keypoints_1, descriptors_1);
+
+#ifdef TIME
+    t = (double)getTickCount() - t;
+    printf("opencv sift cost : %g ms\n", t*1000./tf);//158
+#endif
+
+    std::cout<<"Original sift keypoints num :"<<keypoints_1.size()<<std::endl;
+    Mat kepoint1;
+    drawKeypoints(src, keypoints_1,kepoint1,cv::Scalar::all(-1),4);
+    cvNamedWindow("extract_cpu",CV_WINDOW_NORMAL);
+    imshow("extract_cpu", kepoint1);
+    //等待任意按键按下
+    waitKey(0);
+    //////////////////////////////////////////////////
+
+
+
 
     return 0;
 }

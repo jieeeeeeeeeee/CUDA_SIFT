@@ -112,7 +112,7 @@ int evaluateDetectorBuforce(std::vector<KeyPoint> &one,int size,std::vector<KeyP
         for(int j = 0;j<size1;j++)
         {
             y = another[j];
-            if(abs(x.pt.x-y.pt.x)<e&&abs(x.pt.y-y.pt.y)<e)
+            if(abs(x.pt.x-y.pt.x)<e&&abs(x.pt.y-y.pt.y)<e&&abs(x.pt.y-y.pt.y)<e)
             {
                 sum++;
                 break;
@@ -246,60 +246,60 @@ int main()
 
 //    /************* show *******************/
 
-//    std::cout<<"sift keypoints num :"<<keypoints_1.size()<<std::endl;
-//    Mat kepointImg_sift;
-//    drawKeypoints(img_1, keypoints_1,kepointImg_sift,cv::Scalar::all(0),4);
-//    cvNamedWindow("kepointImg_sift",CV_WINDOW_NORMAL);
-//    imshow("kepointImg_sift", kepointImg_sift);
-//    //等待任意按键按下
-//    //waitKey(0);
+    std::cout<<"sift keypoints num :"<<keypoints_1.size()<<std::endl;
+    Mat kepointImg_sift;
+    drawKeypoints(img_1, keypoints_1,kepointImg_sift,cv::Scalar::all(0),4);
+    cvNamedWindow("kepointImg_sift",CV_WINDOW_NORMAL);
+    imshow("kepointImg_sift", kepointImg_sift);
+    //等待任意按键按下
+    //waitKey(0);
 
-//    std::vector<cv::KeyPoint> keypoints2;
-//    Mat kepointImg_cu;
-//    drawKeypoints(img_1, keypoints1,kepointImg_cu,cv::Scalar::all(255),4);
-//    cvNamedWindow("kepointImg_cu",CV_WINDOW_NORMAL);
-//    imshow("kepointImg_cu", kepointImg_cu);
-//    //等待任意按键按下
-//    //waitKey(0);
+    std::vector<cv::KeyPoint> keypoints2;
+    Mat kepointImg_cu;
+    drawKeypoints(img_1, keypoints1,kepointImg_cu,cv::Scalar::all(255),4);
+    cvNamedWindow("kepointImg_cu",CV_WINDOW_NORMAL);
+    imshow("kepointImg_cu", kepointImg_cu);
+    //等待任意按键按下
+    //waitKey(0);
 
 
-//    //cudasift cover origonal sift
-//    Mat cuCoversift;
-//    drawKeypoints(kepointImg_sift, keypoints1,cuCoversift,cv::Scalar::all(255),4);
-//    cvNamedWindow("cuCoversift",CV_WINDOW_NORMAL);
-//    imshow("cuCoversift", cuCoversift);
-//    //等待任意按键按下
-//    //waitKey(0);
+    //cudasift cover origonal sift
+    Mat cuCoversift;
+    drawKeypoints(kepointImg_sift, keypoints1,cuCoversift,cv::Scalar::all(255),4);
+    cvNamedWindow("cuCoversift",CV_WINDOW_NORMAL);
+    imshow("cuCoversift", cuCoversift);
+    //等待任意按键按下
+    //waitKey(0);
 
-//    //origonal sift cover cudasift
-//    Mat siftCovercu;
-//    drawKeypoints(kepointImg_cu, keypoints_1,siftCovercu,cv::Scalar::all(0),4);
-//    cvNamedWindow("siftCovercu",CV_WINDOW_NORMAL);
-//    imshow("siftCovercu", siftCovercu);
-//    //等待任意按键按下
-//    waitKey(0);
+    //origonal sift cover cudasift
+    Mat siftCovercu;
+    drawKeypoints(kepointImg_cu, keypoints_1,siftCovercu,cv::Scalar::all(0),4);
+    cvNamedWindow("siftCovercu",CV_WINDOW_NORMAL);
+    imshow("siftCovercu", siftCovercu);
+    //等待任意按键按下
+    waitKey(0);
 
 
 //    /************ compare ***************/
 
-//    sort(keypoints_1.begin(),keypoints_1.end(),sortx);
-//    int unique_nums,unique_nums1;
-//    unique_nums = std::unique(keypoints_1.begin(),keypoints_1.end(),uniquex) - keypoints_1.begin();
-////    for(int i = 0;i < unique_nums;i++)
-////        std::cout<<keypoints_1[i].response<<" ";
-//    std::cout<<unique_nums<<std::endl;
+    sort(keypoints_1.begin(),keypoints_1.end(),sortx);
+    int unique_nums,unique_nums1;
+    unique_nums = std::unique(keypoints_1.begin(),keypoints_1.end(),uniquex) - keypoints_1.begin();
+//    for(int i = 0;i < unique_nums;i++)
+//        std::cout<<keypoints_1[i].response<<" ";
+    std::cout<<unique_nums<<std::endl;
 
 
-//    sort(keypoints1.begin(),keypoints1.end(),sortx);
-//    //int unique_nums;
-//    unique_nums1 = std::unique(keypoints1.begin(),keypoints1.end(),uniquex) - keypoints1.begin();
-////    for(int i = 0;i < unique_nums;i++)
-////        std::cout<<keypoints1[i].response<<" ";
-//    std::cout<<unique_nums1<<std::endl;
+    sort(keypoints1.begin(),keypoints1.end(),sortx);
+    //int unique_nums;
+    unique_nums1 = std::unique(keypoints1.begin(),keypoints1.end(),uniquex) - keypoints1.begin();
+//    for(int i = 0;i < unique_nums;i++)
+//        std::cout<<keypoints1[i].response<<" ";
+    std::cout<<unique_nums1<<std::endl;
 
-//    int sameCount = evaluateDetectorBuforce(keypoints_1,unique_nums,keypoints1,unique_nums1,0.2);
+    int sameCount = evaluateDetectorBuforce(keypoints_1,unique_nums,keypoints1,unique_nums1,0.2);
 
-//    std::cout<<"sameCount:"<<sameCount<<" rate:"<<(float)sameCount/unique_nums<<std::endl;
+    std::cout<<"sameCount:"<<sameCount<<" rate:"<<(float)sameCount/unique_nums<<std::endl;
 //    for(int i = 0;i < keypoints_1.size();i++)
 //        std::cout<<keypoints_1[i].pt.x<<" ";
 //    std::cout<<std::endl;

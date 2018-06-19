@@ -2415,6 +2415,7 @@ void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>&
     //4 is the 4 len buf
     int buffSize = temDataSize*4;
     safeCall(cudaMalloc(&temData,sizeof(float)*num0*buffSize));
+    //std::cout<<"buffSize:"<<buffSize<<std::endl;
 
     int grid =iDivUp(num0,BLOCK_SIZE_ONE_DIM);
     //use the global memory

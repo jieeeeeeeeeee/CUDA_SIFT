@@ -9,3 +9,6 @@ include_directories(..)
 
 
 add_library(sift SHARED ${CURRENT_HEADERS} sift.cpp)
+add_library(sift_cv_gpu SHARED ${CURRENT_HEADERS} sift_cv_gpu.cpp)
+
+

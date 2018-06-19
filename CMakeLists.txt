@@ -31,7 +31,7 @@ add_subdirectory(cuda)
 
 #SET(CMAKE_BUILD_TYPE "Debug")
 #SET(CMAKE_CXX_FLAGS "-pg")
-set(LABRARY ${OpenCV_LIBS} "Qt5::Core"  "sift" "cusift")
+set(LABRARY ${OpenCV_LIBS} "Qt5::Core"  "sift" "cusift" "sift_cv_gpu")
 
 add_executable(${PROJECT_NAME} ${SRC})
 

@@ -47,44 +47,6 @@ namespace cuda {
 namespace device {
 namespace sift {
 
-/******************************* Defs and macros *****************************/
-
-// default width of descriptor histogram array
-static const int SIFT_DESCR_WIDTH = 4;
-
-// default number of bins per histogram in descriptor array
-static const int SIFT_DESCR_HIST_BINS = 8;
-
-// assumed gaussian blur for input image
-static const float SIFT_INIT_SIGMA = 0.5f;
-
-// width of border in which to ignore keypoints
-static const int SIFT_IMG_BORDER = 5;
-
-// maximum steps of keypoint interpolation before failure
-static const int SIFT_MAX_INTERP_STEPS = 5;
-
-// default number of bins in histogram for orientation assignment
-static const int SIFT_ORI_HIST_BINS = 36;
-
-// determines gaussian sigma for orientation assignment
-static const float SIFT_ORI_SIG_FCTR = 1.5f;
-
-// determines the radius of the region used in orientation assignment
-static const float SIFT_ORI_RADIUS = 3 * SIFT_ORI_SIG_FCTR;
-
-// orientation magnitude relative to max that results in new feature
-static const float SIFT_ORI_PEAK_RATIO = 0.8f;
-
-// determines the size of a single descriptor orientation histogram
-static const float SIFT_DESCR_SCL_FCTR = 3.f;
-
-// threshold on magnitude of elements of descriptor vector
-static const float SIFT_DESCR_MAG_THR = 0.2f;
-
-// factor used to convert floating-point descriptor to unsigned char
-static const float SIFT_INT_DESCR_FCTR = 512.f;
-
 
 void differenceImg_gpu(const PtrStepSzf& next,const PtrStepSzf& prev,PtrStepSzf diff)
 {
@@ -116,7 +78,19 @@ void createInitialImage(const GpuMat& src,GpuMat& base, bool doubleImageSize, fl
     if( doubleImageSize )
     {
         sig_diff = sqrtf( std::max(sigma * sigma - SIFT_INIT_SIGMA * SIFT_INIT_SIGMA * 4, 0.01f) );
+#if 1
+        Mat gray_fpt_cpu(gray_fpt);
+        cv::resize(gray_fpt_cpu, gray_fpt_cpu, Size(gray_fpt.cols*2, gray_fpt.rows*2), 0, 0, INTER_LINEAR);
+        gray_fpt.upload(gray_fpt_cpu);
+#else
         cuda::resize(gray_fpt, gray_fpt, Size(gray_fpt.cols*2, gray_fpt.rows*2), 0, 0, INTER_LINEAR);
+#endif
+//                    GpuMat test;
+//                    gray_fpt.convertTo(test, DataType<uchar>::type, 1, 0);
+//                    cv::Mat show(test);
+//                    cv::namedWindow("show",WINDOW_GUI_EXPANDED);
+//                    cv::imshow("show",show);
+//                    cv::waitKey(0);
         width = gray_fpt.cols;
         height = gray_fpt.rows;
         cv::Ptr<cv::cuda::Filter> gauss = cv::cuda::createGaussianFilter(CV_32F, CV_32F, Size(0, 0), sig_diff, 0, cv::BORDER_DEFAULT,-1);
@@ -207,21 +181,152 @@ void buildDoGPyramid(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpyr,int 
 //                dim3 Grid(iDivUp(diff.pitch,Block.x),iDivUp(diff.height,Block.y));
 //                differenceImg<<<Grid,Block>>>(prev.d_data,next.d_data,diff.d_data,diff.pitch,diff.height);
 //                safeCall(cudaDeviceSynchronize());
-#if 0
+#if 1
             cuda::subtract(next, prev, diff, noArray(), DataType<float>::type);
 #else
             diff.create(next.rows,next.cols,next.type());
             differenceImg_gpu(next,prev,diff);
 #endif
-            GpuMat test;
-            diff.convertTo(test, DataType<uchar>::type, 100, 0);
-            cv::Mat show(test);
-            cv::namedWindow("show",WINDOW_GUI_EXPANDED);
-            cv::imshow("show",show);
-            cv::waitKey(0);
+//            GpuMat test;
+//            diff.convertTo(test, DataType<uchar>::type, 100, 0);
+//            cv::Mat show(test);
+//            cv::namedWindow("show",WINDOW_GUI_EXPANDED);
+//            cv::imshow("show",show);
+//            cv::waitKey(0);
         }
     }
 }
+//three question:
+//1.keypoint allocate with unknow size: using GpuMat allocate
+//ensureSizeIsEnough(SURF_CUDA::ROWS_COUNT, maxFeatures, CV_32FC1, keypoints);
+//2.Two dimension vector:vector<GpuMat> send to kernel: using
+//3.The sum of the keypoints num: using atomAdd()
+
+void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpyr, GpuMat& keypoints,float contrastThreshold,int nOctaveLayers,int maxFeatures)
+{
+
+    ensureSizeIsEnough(SIFT_CUDA::ROWS_COUNT, maxFeatures, CV_32FC1, keypoints);
+    keypoints.setTo(Scalar::all(0));
+
+
+    const int threshold = cvFloor(0.5 * contrastThreshold / nOctaveLayers * 255 * SIFT_FIXPT_SCALE);
+
+    float **h_pd = new float*[dogpyr.size()];
+    for(int i = 0;i<dogpyr.size();i++)
+        h_pd[i] = (float*)dogpyr[i].ptr();
+    safeCall(cudaMemcpyToSymbol(pd, h_pd, sizeof(float *)*dogpyr.size()));
+
+
+    float **h_gpyr = new float*[gpyr.size()];
+    for(int i = 0;i<gpyr.size();i++)
+        h_gpyr[i] = (float*)gpyr[i].ptr();
+    safeCall(cudaMemcpyToSymbol(pgpyr, h_gpyr, sizeof(float *)*gpyr.size()));
+
+
+    int temDataSize = 0;
+    safeCall(cudaMemcpyToSymbol(temsize, &temDataSize, sizeof(int)));
+
+
+    dim3 Block(32,8);
+    int nOctaves = (int)gpyr.size()/(nOctaveLayers + 3);
+    for(int o = 0;o<nOctaves;o++){
+        for(int i = 0;i<nOctaveLayers;i++){
+            int index = o*(nOctaveLayers+2)+i+1;
+            dim3 Grid(iDivUp(dogpyr[index].step1(),Block.x),iDivUp(dogpyr[index].rows,Block.y));
+            findScaleSpaceExtrema_gpu<<<Grid,Block>>>((float*)keypoints.ptr(),keypoints.step1(),index,dogpyr[index].cols,dogpyr[index].step1(),dogpyr[index].rows,threshold,nOctaveLayers,maxFeatures);
+            CV_CUDEV_SAFE_CALL( cudaGetLastError() );
+            CV_CUDEV_SAFE_CALL( cudaDeviceSynchronize() );
+        }
+    }
+
+
+
+    int num0 = 0;
+    safeCall(cudaMemcpyFromSymbol(&num0, d_PointCounter, sizeof(int)));
+    num0 = (num0>maxFeatures)? maxFeatures:num0;
+    printf("cuda sift kepoints num : %d \n",num0);
+
+    int* oIndex = new int[33];
+    for(int i =0;i<nOctaves;i++){
+        int index = i*(nOctaveLayers+2);
+        oIndex[i*3] = dogpyr[index].cols;
+        oIndex[i*3+1] = dogpyr[index].rows;
+        oIndex[i*3+2] = dogpyr[index].step1();
+    }
+    safeCall(cudaMemcpyToSymbol(d_oIndex, oIndex, sizeof(int)*33));
+
+    float* temData;
+    safeCall(cudaMemcpyFromSymbol(&temDataSize, temsize, sizeof(int)));
+    //4 is the 4 len buf
+    int buffSize = temDataSize*4;
+    safeCall(cudaMalloc(&temData,sizeof(float)*num0*buffSize));
+    //std::cout<<"buffSize:"<<buffSize<<std::endl;
+
+    int grid =iDivUp(num0,BLOCK_SIZE_ONE_DIM);
+    //use the global memory
+    //calcOrientationHist_gpu<<<grid,BLOCK_SIZE_ONE_DIM>>>(d_keypoints,temData,buffSize,num0,maxPoints,nOctaveLayers);
+    calcOrientationHist_gpu1<<<grid,BLOCK_SIZE_ONE_DIM>>>((float*)keypoints.ptr(),keypoints.step1(),temData,buffSize,num0,maxFeatures,nOctaveLayers);
+    CV_CUDEV_SAFE_CALL( cudaGetLastError() );
+    CV_CUDEV_SAFE_CALL( cudaDeviceSynchronize() );
+    cudaFree(temData);
+
+    int num1 = 0;
+    safeCall(cudaMemcpyFromSymbol(&num1, d_PointCounter, sizeof(int)));
+    num1 = (num1>maxFeatures)? maxFeatures:num1;
+    printf("cuda sift kepoints num after calOritation : %d \n",num1);
+
+
+    //alloc for d_decriptor
+    float* d_descriptor;
+    int despriptorSize = SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS;
+    cudaMalloc(&d_descriptor,sizeof(float)*num1*despriptorSize);
+
+    grid =iDivUp(num1,BLOCK_SIZE_ONE_DIM);
+    calcSIFTDescriptor_gpu<<<grid,BLOCK_SIZE_ONE_DIM>>>((float*)keypoints.ptr(),keypoints.step1(),d_descriptor,num1,nOctaveLayers);
+    CV_CUDEV_SAFE_CALL( cudaGetLastError() );
+    CV_CUDEV_SAFE_CALL( cudaDeviceSynchronize() );
+
+
+
+
+
+    Mat keypointsCPU(keypoints);
+    float* h_keypoints = (float*)keypointsCPU.ptr();
+    std::vector<cv::KeyPoint>keypointss;
+    keypointss.resize(num1);
+    for(int i = 0;i<keypointss.size();++i)
+    {
+        keypointss[i].pt.x =  h_keypoints[i];
+        keypointss[i].pt.y =  h_keypoints[i+keypointsCPU.step1()*1];
+        keypointss[i].octave =  h_keypoints[i+keypointsCPU.step1()*2];
+        keypointss[i].size =  h_keypoints[i+keypointsCPU.step1()*3];
+        keypointss[i].response =  h_keypoints[i+keypointsCPU.step1()*4];
+        keypointss[i].angle =  h_keypoints[i+keypointsCPU.step1()*5];
+    }
+    int firstOctave = -1;
+    if( firstOctave < 0 )
+        for( size_t i = 0; i < keypointss.size(); i++ )
+        {
+            KeyPoint& kpt = keypointss[i];
+            float scale = 1.f/(float)(1 << -firstOctave);
+            kpt.octave = (kpt.octave & ~255) | ((kpt.octave + firstOctave) & 255);
+            kpt.pt *= scale;
+            kpt.size *= scale;
+        }
+    Mat kepoint;
+    Mat dst(gpyr[6]),img;
+    dst.convertTo(img, DataType<uchar>::type, 1, 0);
+    drawKeypoints(img, keypointss,kepoint,cv::Scalar::all(-1),4);
+    cvNamedWindow("new cuda sift",CV_WINDOW_NORMAL);
+    imshow("new cuda sift", kepoint);
+    //等待任意按键按下
+    //waitKey(0);
+
+
+
+}
+
+
 }
 }
 }
@@ -241,6 +346,8 @@ public:
         CV_Assert(!img.empty() && img.type() == CV_8UC1);
         CV_Assert(mask.empty() || (mask.size() == img.size() && mask.type() == CV_8UC1));
 
+
+        sift.maxFeatures = std::min(static_cast<int>(img.size().area() * sift.keypointsRatio), 65535);
 
 
         if (use_mask)
@@ -299,14 +406,13 @@ public:
         //t = (double)getTickCount();
         buildGaussianPyramid(base, gpyr, nOctaves,sift.nOctaveLayers,sift.sigma);
         buildDoGPyramid(gpyr, dogpyr,sift.nOctaveLayers);
-
         //t = (double)getTickCount() - t;
         //printf("pyramid construction time: %g\n", t*1000./tf);
 
-//        if( !useProvidedKeypoints )
-//        {
-//            //t = (double)getTickCount();
-//            findScaleSpaceExtrema(gpyr, dogpyr, keypoints);
+        if( !useProvidedKeypoints )
+        {
+            //t = (double)getTickCount();
+            findScaleSpaceExtrema(gpyr, dogpyr, keypoints,sift.contrastThreshold,sift.nOctaveLayers,sift.maxFeatures);
 //            KeyPointsFilter::removeDuplicatedSorted( keypoints );
 
 //            if( nfeatures > 0 )
@@ -344,7 +450,7 @@ public:
 //            calcDescriptors(gpyr, keypoints, descriptors, nOctaveLayers, firstOctave);
 //            //t = (double)getTickCount() - t;
 //            //printf("descriptor extraction time: %g\n", t*1000./tf);
-//        }
+        }
     }
 
 private:
@@ -376,12 +482,13 @@ namespace cuda {
 //    }
     SIFT_CUDA::SIFT_CUDA(int _nOctaveLayers,
                          float _contrastThreshold, float _edgeThreshold,
-                         float _sigma)
+                         float _sigma,float _keypointsRatio)
     {
         nOctaveLayers = _nOctaveLayers;
         contrastThreshold = _contrastThreshold;
         edgeThreshold = _edgeThreshold;
         sigma = _sigma;
+        keypointsRatio = 0.01;
     }
     void SIFT_CUDA::operator ()(const GpuMat& img, const GpuMat& mask, GpuMat& keypoints, GpuMat& descriptors,
                                 bool useProvidedKeypoints)
