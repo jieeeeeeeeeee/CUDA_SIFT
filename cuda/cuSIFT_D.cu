@@ -324,9 +324,9 @@ __global__ void findScaleSpaceExtrema_gpu(float *d_point,int p_pitch,int s, int 
 //        s = _octave*(nOctaveLayers+2)+layer;
 //        x = round(d_point[idx]/(1<<_octave));
 //        y = round(d_point[idx+p_pitch*1]/(1<<_octave));
-        d_point[idx+p_pitch*6] = s;
-        d_point[idx+p_pitch*7] = x;
-        d_point[idx+p_pitch*8] = y;
+//        d_point[idx+p_pitch*6] = s;
+//        d_point[idx+p_pitch*7] = x;
+//        d_point[idx+p_pitch*8] = y;
 
         //temsize+=size*0.5f/(1 << o)*SIFT_ORI_RADIUS+0.5;
 //        if(x<2000 && y<2000)
@@ -353,7 +353,7 @@ __device__ void unpackOctave(float& fx,float& fy,float& oct_lay1,int& x,int& y,i
     y = round(fy/(1<<octave));
 }
 
-__global__ void calcOrientationHist_gpu1(float *d_point,int p_pitch,float* temdata,const int buffSize,const int pointsNum,const int maxNum,const int nOctaveLayers)
+__global__ void calcOrientationHist_gpu(float *d_point,int p_pitch,float* temdata,const int buffSize,const int pointsNum,const int maxNum,const int nOctaveLayers)
 {
     //int x = blockIdx.x*blockDim.x+threadIdx.x;
     int pointIndex = blockIdx.x*blockDim.x+threadIdx.x;
@@ -367,9 +367,9 @@ __global__ void calcOrientationHist_gpu1(float *d_point,int p_pitch,float* temda
     s_point[threadIdx.x*KEYPOINTS_SIZE+3] =d_point[pointIndex+p_pitch*3];
     s_point[threadIdx.x*KEYPOINTS_SIZE+4] =d_point[pointIndex+p_pitch*4];
     s_point[threadIdx.x*KEYPOINTS_SIZE+5] =d_point[pointIndex+p_pitch*5];
-    s_point[threadIdx.x*KEYPOINTS_SIZE+6] =d_point[pointIndex+p_pitch*6];
-    s_point[threadIdx.x*KEYPOINTS_SIZE+7] =d_point[pointIndex+p_pitch*7];
-    s_point[threadIdx.x*KEYPOINTS_SIZE+8] =d_point[pointIndex+p_pitch*8];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+6] =d_point[pointIndex+p_pitch*6];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+7] =d_point[pointIndex+p_pitch*7];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+8] =d_point[pointIndex+p_pitch*8];
 
     __syncthreads();
     float size =s_point[threadIdx.x*KEYPOINTS_SIZE+3];
@@ -510,9 +510,9 @@ __global__ void calcOrientationHist_gpu1(float *d_point,int p_pitch,float* temda
                 d_point[idx+p_pitch*3] = s_point[threadIdx.x*KEYPOINTS_SIZE+3];
                 d_point[idx+p_pitch*4] = s_point[threadIdx.x*KEYPOINTS_SIZE+4];
                 d_point[idx+p_pitch*5] = 360.f - (float)((360.f/n) * bin);
-                d_point[idx+p_pitch*6] = s_point[threadIdx.x*KEYPOINTS_SIZE+6];
-                d_point[idx+p_pitch*7] = s_point[threadIdx.x*KEYPOINTS_SIZE+7];
-                d_point[idx+p_pitch*8] = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
+//                d_point[idx+p_pitch*6] = s_point[threadIdx.x*KEYPOINTS_SIZE+6];
+//                d_point[idx+p_pitch*7] = s_point[threadIdx.x*KEYPOINTS_SIZE+7];
+//                d_point[idx+p_pitch*8] = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
                 //printf("%f ",360.f - (float)((360.f/n) * bin));
             }
         }
@@ -557,18 +557,12 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,int p_pitch,float* d_decri
     float size =d_point[pointIndex+p_pitch*3];
     float ori = d_point[pointIndex+p_pitch*5];
 
-//    int x,y,o,layer;
-//    unpackOctave(s_point[threadIdx.x*KEYPOINTS_SIZE],
-//            s_point[threadIdx.x*KEYPOINTS_SIZE+1],
-//            s_point[threadIdx.x*KEYPOINTS_SIZE+2],
-//            x,y,o,layer);
 
-    int s = d_point[pointIndex+p_pitch*6];
-    int x = d_point[pointIndex+p_pitch*7];
-    int y = d_point[pointIndex+p_pitch*8];
-
-    int o = s/(nOctaveLayers+2);
-    int layer = s - o*(nOctaveLayers+2);
+    int x,y,o,layer;
+    unpackOctave(d_point[pointIndex],
+            d_point[pointIndex+p_pitch*1],
+            d_point[pointIndex+p_pitch*2],
+            x,y,o,layer);
 
     float scl_octv = size/((1 << o)*2);
 

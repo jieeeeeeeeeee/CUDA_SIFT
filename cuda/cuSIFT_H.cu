@@ -263,7 +263,7 @@ void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpy
     int grid =iDivUp(num0,BLOCK_SIZE_ONE_DIM);
     //use the global memory
     //calcOrientationHist_gpu<<<grid,BLOCK_SIZE_ONE_DIM>>>(d_keypoints,temData,buffSize,num0,maxPoints,nOctaveLayers);
-    calcOrientationHist_gpu1<<<grid,BLOCK_SIZE_ONE_DIM>>>((float*)keypoints.ptr(),keypoints.step1(),temData,buffSize,num0,maxFeatures,nOctaveLayers);
+    calcOrientationHist_gpu<<<grid,BLOCK_SIZE_ONE_DIM>>>((float*)keypoints.ptr(),keypoints.step1(),temData,buffSize,num0,maxFeatures,nOctaveLayers);
     CV_CUDEV_SAFE_CALL( cudaGetLastError() );
     CV_CUDEV_SAFE_CALL( cudaDeviceSynchronize() );
     cudaFree(temData);

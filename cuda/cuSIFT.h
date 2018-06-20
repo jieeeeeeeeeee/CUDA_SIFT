@@ -69,7 +69,7 @@ static const float SIFT_INT_DESCR_FCTR = 512.f;
 
 static const int SIFT_FIXPT_SCALE = 1;
 
-static const int KEYPOINTS_SIZE = 9;
+static const int KEYPOINTS_SIZE = 6;
 }}}}
 
 
@@ -100,9 +100,6 @@ public:
         SIZE_ROW,
         RESPONSE_ROW,
         ANGLE_ROW,
-        OCTAVEINPYMID_ROW,
-        X_INTEGER_ROW,
-        Y_INTEGER_ROW,
         ROWS_COUNT
     };
     //! the default constructor
