@@ -311,17 +311,26 @@ __global__ void findScaleSpaceExtrema_gpu(float *d_point,int p_pitch,int s, int 
 
         d_point[idx] = (x + Vx)*(1 << o);
         d_point[idx+p_pitch*1] = (y + Vy)*(1 << o);
-        d_point[idx+p_pitch*2] = o + (s<<8) + ((int)(((Vs + 0.5)*255)+0.5) << 16);
+        float oct_lay1 =o + (layer<<8) + ((int)(((Vs + 0.5)*255)+0.5) << 16);
+        int oct_lay = oct_lay1;
+        d_point[idx+p_pitch*2] = oct_lay1;
         float size = 1.6*__powf(2.f, (layer + Vs) / nOctaveLayers)*(1 << o)*2;
         d_point[idx+p_pitch*3] = size;
         d_point[idx+p_pitch*4] = std::abs(contr);
+//        int _octave,_layer;
+//        _octave = oct_lay & 255;
+//        layer = (oct_lay >> 8) & 255;
+//        _octave = _octave < 128 ? _octave : (-128 | _octave);
+//        s = _octave*(nOctaveLayers+2)+layer;
+//        x = round(d_point[idx]/(1<<_octave));
+//        y = round(d_point[idx+p_pitch*1]/(1<<_octave));
         d_point[idx+p_pitch*6] = s;
         d_point[idx+p_pitch*7] = x;
         d_point[idx+p_pitch*8] = y;
 
         //temsize+=size*0.5f/(1 << o)*SIFT_ORI_RADIUS+0.5;
-
-        //printf("%d,%d,%f,%f \n",x,y,std::abs(contr),(pd[s]  +y*pitch+x)[0]);
+//        if(x<2000 && y<2000)
+//            printf("%d,%d,%d\n",x,y,s);
         //printf("%f \n",pd[0][100*2304+100]);
 
         float scl_octv = size*0.5f/(1 << o);
@@ -334,7 +343,15 @@ __global__ void findScaleSpaceExtrema_gpu(float *d_point,int p_pitch,int s, int 
     }
 }
 
-
+__device__ void unpackOctave(float& fx,float& fy,float& oct_lay1,int& x,int& y,int& octave,int& layer)
+{
+    int oct_lay = oct_lay1;
+    octave = oct_lay & 255;
+    layer = (oct_lay >> 8) & 255;
+    octave = octave < 128 ? octave : (-128 | octave);
+    x = round(fx/(1<<octave));
+    y = round(fy/(1<<octave));
+}
 
 __global__ void calcOrientationHist_gpu1(float *d_point,int p_pitch,float* temdata,const int buffSize,const int pointsNum,const int maxNum,const int nOctaveLayers)
 {
@@ -342,8 +359,7 @@ __global__ void calcOrientationHist_gpu1(float *d_point,int p_pitch,float* temda
     int pointIndex = blockIdx.x*blockDim.x+threadIdx.x;
     if(pointIndex>=pointsNum)
         return;
-#define SHAREMEMORY
-#ifdef SHAREMEMORY
+
     __shared__ float s_point[BLOCK_SIZE_ONE_DIM*KEYPOINTS_SIZE];
     s_point[threadIdx.x*KEYPOINTS_SIZE]   =d_point[pointIndex];
     s_point[threadIdx.x*KEYPOINTS_SIZE+1] =d_point[pointIndex+p_pitch*1];
@@ -357,19 +373,18 @@ __global__ void calcOrientationHist_gpu1(float *d_point,int p_pitch,float* temda
 
     __syncthreads();
     float size =s_point[threadIdx.x*KEYPOINTS_SIZE+3];
-    int s = s_point[threadIdx.x*KEYPOINTS_SIZE+6];
-    int x = s_point[threadIdx.x*KEYPOINTS_SIZE+7];
-    int y = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
-#else
-    float size =d_point[pointIndex*KEYPOINTS_SIZE+3];
-    int s = d_point[pointIndex*KEYPOINTS_SIZE+6];
-    int x = d_point[pointIndex*KEYPOINTS_SIZE+7];
-    int y = d_point[pointIndex*KEYPOINTS_SIZE+8];
-#endif
 
+    int x,y,o,layer;
+    unpackOctave(s_point[threadIdx.x*KEYPOINTS_SIZE],
+            s_point[threadIdx.x*KEYPOINTS_SIZE+1],
+            s_point[threadIdx.x*KEYPOINTS_SIZE+2],
+            x,y,o,layer);
 
-    int o = s/(nOctaveLayers+2);
-    int layer = s - o*(nOctaveLayers+2);
+//    int s = s_point[threadIdx.x*KEYPOINTS_SIZE+6];
+//    int x = s_point[threadIdx.x*KEYPOINTS_SIZE+7];
+//    int y = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
+//    int o = s/(nOctaveLayers+2);
+//    int layer = s - o*(nOctaveLayers+2);
 
     int width = d_oIndex[o*3];
     int height = d_oIndex[o*3+1];
@@ -482,7 +497,7 @@ __global__ void calcOrientationHist_gpu1(float *d_point,int p_pitch,float* temda
         {
             float bin = j + 0.5f * (hist[l]-hist[r2]) / (hist[l] - 2*hist[j] + hist[r2]);
             bin = bin < 0 ? n + bin : bin >= n ? bin - n : bin;
-#ifdef SHAREMEMORY
+
             if(hist[j] == omax)
                 d_point[pointIndex+p_pitch*5] = 360.f - (float)((360.f/n) * bin);
             else{
@@ -500,21 +515,6 @@ __global__ void calcOrientationHist_gpu1(float *d_point,int p_pitch,float* temda
                 d_point[idx+p_pitch*8] = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
                 //printf("%f ",360.f - (float)((360.f/n) * bin));
             }
-#else
-            if(hist[j] == omax)
-                d_point[pointIndex*KEYPOINTS_SIZE+5] = 360.f - (float)((360.f/n) * bin);
-            else{
-                //addpoint;
-                unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
-                idx = (idx>maxNum ? maxNum-1 : idx);
-                d_point[idx*KEYPOINTS_SIZE]   = d_point[pointIndex*KEYPOINTS_SIZE];
-                d_point[idx*KEYPOINTS_SIZE+1] = d_point[pointIndex*KEYPOINTS_SIZE+1];
-                d_point[idx*KEYPOINTS_SIZE+2] = d_point[pointIndex*KEYPOINTS_SIZE+2];
-                d_point[idx*KEYPOINTS_SIZE+3] = d_point[pointIndex*KEYPOINTS_SIZE+3];
-                d_point[idx*KEYPOINTS_SIZE+4] = d_point[pointIndex*KEYPOINTS_SIZE+4];
-                d_point[idx*KEYPOINTS_SIZE+5] = 360.f - (float)((360.f/n) * bin);
-            }
-#endif
         }
     }
 
@@ -536,36 +536,40 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,int p_pitch,float* d_decri
     int pointIndex = blockIdx.x*blockDim.x+threadIdx.x;
     if(pointIndex>=pointsNum)
         return;
+//    __shared__ float s_point[BLOCK_SIZE_ONE_DIM*KEYPOINTS_SIZE];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE]   =d_point[pointIndex*KEYPOINTS_SIZE];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+1] =d_point[pointIndex*KEYPOINTS_SIZE+1];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+2] =d_point[pointIndex*KEYPOINTS_SIZE+2];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+3] =d_point[pointIndex*KEYPOINTS_SIZE+3];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+4] =d_point[pointIndex*KEYPOINTS_SIZE+4];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+5] =d_point[pointIndex*KEYPOINTS_SIZE+5];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+6] =d_point[pointIndex*KEYPOINTS_SIZE+6];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+7] =d_point[pointIndex*KEYPOINTS_SIZE+7];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+8] =d_point[pointIndex*KEYPOINTS_SIZE+8];
 
-#define SHAREMEMORY
-#ifdef SHAREMEMORYa
-    __shared__ float s_point[BLOCK_SIZE_ONE_DIM*KEYPOINTS_SIZE];
-    s_point[threadIdx.x*KEYPOINTS_SIZE]   =d_point[pointIndex*KEYPOINTS_SIZE];
-    s_point[threadIdx.x*KEYPOINTS_SIZE+1] =d_point[pointIndex*KEYPOINTS_SIZE+1];
-    s_point[threadIdx.x*KEYPOINTS_SIZE+2] =d_point[pointIndex*KEYPOINTS_SIZE+2];
-    s_point[threadIdx.x*KEYPOINTS_SIZE+3] =d_point[pointIndex*KEYPOINTS_SIZE+3];
-    s_point[threadIdx.x*KEYPOINTS_SIZE+4] =d_point[pointIndex*KEYPOINTS_SIZE+4];
-    s_point[threadIdx.x*KEYPOINTS_SIZE+5] =d_point[pointIndex*KEYPOINTS_SIZE+5];
-    s_point[threadIdx.x*KEYPOINTS_SIZE+6] =d_point[pointIndex*KEYPOINTS_SIZE+6];
-    s_point[threadIdx.x*KEYPOINTS_SIZE+7] =d_point[pointIndex*KEYPOINTS_SIZE+7];
-    s_point[threadIdx.x*KEYPOINTS_SIZE+8] =d_point[pointIndex*KEYPOINTS_SIZE+8];
+//    __syncthreads();
+//    float size = s_point[threadIdx.x*KEYPOINTS_SIZE+3];
+//    float ori = s_point[threadIdx.x*KEYPOINTS_SIZE+5];
+//    int s = s_point[threadIdx.x*KEYPOINTS_SIZE+6];
+//    int x = s_point[threadIdx.x*KEYPOINTS_SIZE+7];
+//    int y = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
 
-    __syncthreads();
-    float size = s_point[threadIdx.x*KEYPOINTS_SIZE+3];
-    float ori = s_point[threadIdx.x*KEYPOINTS_SIZE+5];
-    int s = s_point[threadIdx.x*KEYPOINTS_SIZE+6];
-    int x = s_point[threadIdx.x*KEYPOINTS_SIZE+7];
-    int y = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
-#else
     float size =d_point[pointIndex+p_pitch*3];
     float ori = d_point[pointIndex+p_pitch*5];
+
+//    int x,y,o,layer;
+//    unpackOctave(s_point[threadIdx.x*KEYPOINTS_SIZE],
+//            s_point[threadIdx.x*KEYPOINTS_SIZE+1],
+//            s_point[threadIdx.x*KEYPOINTS_SIZE+2],
+//            x,y,o,layer);
+
     int s = d_point[pointIndex+p_pitch*6];
     int x = d_point[pointIndex+p_pitch*7];
     int y = d_point[pointIndex+p_pitch*8];
-#endif
 
     int o = s/(nOctaveLayers+2);
     int layer = s - o*(nOctaveLayers+2);
+
     float scl_octv = size/((1 << o)*2);
 
     int width = d_oIndex[o*3];

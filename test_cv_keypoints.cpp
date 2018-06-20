@@ -34,7 +34,7 @@ unpackOctave(const KeyPoint& kpt, int& octave, int& layer, float& scale)
 bool uniquex(const KeyPoint& a,const KeyPoint& b)
 {
     bool x;
-    if(a.pt.x == b.pt.x && a.pt.y == b.pt.y)
+    if(a.pt.x == b.pt.x && a.pt.y == b.pt.y && a.angle == b.angle)
         x = true;
     else
         x = false;
@@ -113,7 +113,7 @@ int evaluateDetectorBuforce(std::vector<KeyPoint> &one,int size,std::vector<KeyP
         for(int j = 0;j<size1;j++)
         {
             y = another[j];
-            if(abs(x.pt.x-y.pt.x)<=e&&abs(x.pt.y-y.pt.y)<=e&&abs(x.pt.y-y.pt.y)<=e)
+            if(abs(x.pt.x-y.pt.x)<=e&&abs(x.pt.y-y.pt.y)<=e&&abs(x.angle-y.angle)<=e*10)
             {
                 sum++;
                 break;
@@ -261,11 +261,11 @@ int main()
     //等待任意按键按下
     //waitKey(0);
 
-    Mat descriptors_show(descriptsGPU);
-    Mat ss;
-    descriptors_show.convertTo(ss, DataType<uchar>::type, 1, 0);
-    cvNamedWindow("new descriptors",CV_WINDOW_NORMAL);
-    imshow("new descriptors", ss);
+//    Mat descriptors_show(descriptsGPU);
+//    Mat ss;
+//    descriptors_show.convertTo(ss, DataType<uchar>::type, 1, 0);
+//    cvNamedWindow("new descriptors",CV_WINDOW_NORMAL);
+//    imshow("new descriptors", ss);
     //////////////////////////////////////////////////
 
     /////////////////////////////////////
@@ -350,7 +350,7 @@ int main()
 //        std::cout<<keypoints1[i].response<<" ";
     std::cout<<unique_nums1<<std::endl;
 
-    int sameCount = evaluateDetectorBuforce(keypoints_1,unique_nums,keypoints1,unique_nums1,0.0001);
+    int sameCount = evaluateDetectorBuforce(keypoints_1,unique_nums,keypoints1,unique_nums1,0.01);
 
     std::cout<<"sameCount:"<<sameCount<<" rate:"<<(float)sameCount/unique_nums<<std::endl;
 //    for(int i = 0;i < keypoints_1.size();i++)

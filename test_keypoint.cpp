@@ -33,7 +33,7 @@ unpackOctave(const KeyPoint& kpt, int& octave, int& layer, float& scale)
 bool uniquex(const KeyPoint& a,const KeyPoint& b)
 {
     bool x;
-    if(a.pt.x == b.pt.x && a.pt.y == b.pt.y)
+    if(a.pt.x == b.pt.x && a.pt.y == b.pt.y && a.angle == b.angle)
         x = true;
     else
         x = false;
@@ -112,7 +112,7 @@ int evaluateDetectorBuforce(std::vector<KeyPoint> &one,int size,std::vector<KeyP
         for(int j = 0;j<size1;j++)
         {
             y = another[j];
-            if(abs(x.pt.x-y.pt.x)<e&&abs(x.pt.y-y.pt.y)<e&&abs(x.pt.y-y.pt.y)<e)
+            if(abs(x.pt.x-y.pt.x)<e&&abs(x.pt.y-y.pt.y)<e&&abs(x.angle-y.angle)<10*e)
             {
                 sum++;
                 break;

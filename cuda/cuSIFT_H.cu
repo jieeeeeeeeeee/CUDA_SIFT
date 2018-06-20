@@ -239,8 +239,6 @@ void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpy
         }
     }
 
-
-
     int num0 = 0;
     safeCall(cudaMemcpyFromSymbol(&num0, d_PointCounter, sizeof(int)));
     num0 = (num0>maxFeatures)? maxFeatures:num0;
