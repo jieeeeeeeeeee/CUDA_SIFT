@@ -55,8 +55,8 @@
 
 
 //#define USE_SURF
-//#define USE_SIFT
-#define USE_MY_SIFT
+#define USE_SIFT
+//#define USE_MY_SIFT
 
 
 #ifdef USE_SIFT OR USE_SURF

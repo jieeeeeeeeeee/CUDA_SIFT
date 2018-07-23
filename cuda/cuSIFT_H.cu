@@ -271,7 +271,9 @@ void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpy
     int num1 = 0;
     safeCall(cudaMemcpyFromSymbol(&num1, d_PointCounter, sizeof(int)));
     num1 = (num1>maxFeatures)? maxFeatures:num1;
-    printf("cuda sift kepoints num after calOritation : %d \n",num1);
+    //printf("cuda sift kepoints num after calOritation : %d \n",num1);
+
+    keypoints.cols = num1;
 
     //ensureSizeIsEnough(nFeatures, descriptorSize, CV_32F, descriptors);
 
@@ -411,13 +413,12 @@ public:
         int nOctaves = actualNOctaves > 0 ? actualNOctaves : cvRound(std::log( (double)std::min( base.cols, base.rows ) ) / std::log(2.) - 2) - firstOctave;
 
         std::vector<GpuMat> gpyr,dogpyr;
-        //double t, tf = getTickFrequency();
-        //t = (double)getTickCount();
+        double t, tf = getTickFrequency();
+        t = (double)getTickCount();
         buildGaussianPyramid(base, gpyr, nOctaves,sift.nOctaveLayers,sift.sigma);
+        t = (double)getTickCount() - t;
+        printf("pyramid construction time: %g\n", t*1000./tf);
         buildDoGPyramid(gpyr, dogpyr,sift.nOctaveLayers);
-        //t = (double)getTickCount() - t;
-        //printf("pyramid construction time: %g\n", t*1000./tf);
-
         if( !useProvidedKeypoints )
         {
             //t = (double)getTickCount();
@@ -517,6 +518,54 @@ namespace cuda {
 
 
     }
+
+    void SIFT_CUDA::downloadKeypoints(const GpuMat& keypointsGPU, std::vector<KeyPoint>& keypoints)
+    {
+        const int nFeatures = keypointsGPU.cols;
+
+        if (nFeatures == 0)
+            keypoints.clear();
+        else
+        {
+            CV_Assert(keypointsGPU.type() == CV_32FC1 && keypointsGPU.rows == ROWS_COUNT);
+
+            Mat keypointsCPU(keypointsGPU);
+
+            keypoints.resize(nFeatures);
+
+            float* kp_x = keypointsCPU.ptr<float>(SIFT_CUDA::X_ROW);
+            float* kp_y = keypointsCPU.ptr<float>(SIFT_CUDA::Y_ROW);
+            int* kp_octave = keypointsCPU.ptr<int>(SIFT_CUDA::OCTAVEANDLAYER_ROW);
+            float* kp_size = keypointsCPU.ptr<float>(SIFT_CUDA::SIZE_ROW);
+            int* kp_response = keypointsCPU.ptr<int>(SIFT_CUDA::RESPONSE_ROW);
+            float* kp_dir = keypointsCPU.ptr<float>(SIFT_CUDA::ANGLE_ROW);
+
+
+            for (int i = 0; i < nFeatures; ++i)
+            {
+                KeyPoint& kp = keypoints[i];
+                kp.pt.x = kp_x[i];
+                kp.pt.y = kp_y[i];
+                kp.octave = kp_octave[i];
+                kp.size = kp_size[i];
+                kp.response = kp_response[i];
+                kp.angle = kp_dir[i];
+            }
+            int firstOctave = -1;
+            if( firstOctave < 0 )
+                for( size_t i = 0; i < nFeatures; i++ )
+                {
+                    KeyPoint& kpt = keypoints[i];
+                    float scale = 1.f/(float)(1 << -firstOctave);
+                    kpt.octave = (kpt.octave & ~255) | ((kpt.octave + firstOctave) & 255);
+                    kpt.pt *= scale;
+                    kpt.size *= scale;
+                }
+        }
+
+
+    }
+
 
 
 

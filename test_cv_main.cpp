@@ -346,13 +346,7 @@ int main()
     cv::cuda::SIFT_CUDA sift;
     sift(src_gpu,cv::cuda::GpuMat(),keypointsGPU,descriptsGPU);
 
-//    Ptr<cuda::ORB> d_orb = cuda::ORB::create();
 
-//    cv::cuda::SURF_CUDA surf;
-
-    // detecting keypoints & computing descriptors
-
-    //surf(img1, GpuMat(), keypoints1GPU, descriptors1GPU);
 
 
     Mat keypointsCPU(keypointsGPU);
@@ -378,6 +372,7 @@ int main()
             kpt.pt *= scale;
             kpt.size *= scale;
         }
+
 #ifdef TIME
     t = (double)getTickCount() - t;
     printf("new cuda sift cost : %g ms\n", t*1000./tf);//246ms
@@ -388,48 +383,46 @@ int main()
 //    drawKeypoints(img, keypointss,kepoint2,cv::Scalar::all(-1),4);
 //    cvNamedWindow("new cuda sift",CV_WINDOW_NORMAL);
 //    imshow("new cuda sift", kepoint2);
-    //等待任意按键按下
-    //waitKey(0);
+//    //等待任意按键按下
+//    waitKey(0);
 
 //    Mat descriptors_show(descriptsGPU);
 //    Mat ss;
 //    descriptors_show.convertTo(ss, DataType<uchar>::type, 1, 0);
 //    cvNamedWindow("new descriptors",CV_WINDOW_NORMAL);
 //    imshow("new descriptors", ss);
+//    waitKey(0);
     //////////////////////////////////////////////////
-
-
-
 
 
     ///////////////////////////////
     /// original sift
     ///////////////////////////////
 //    //Create SIFT class pointer
-//#ifdef USE_MY_SIFT
-//    Ptr<Feature2D> f2d = xfeatures2d::cvGpu::SIFT::create();
-//#else
-//    Ptr<Feature2D> f2d = xfeatures2d::SIFT::create();
-//#endif
-//    //读入图片
-//    Mat img_1 = src;
+#ifdef USE_MY_SIFT
+    Ptr<Feature2D> f2d = xfeatures2d::cvGpu::SIFT::create();
+#else
+    Ptr<Feature2D> f2d = xfeatures2d::SIFT::create();
+#endif
+    //读入图片
+    Mat img_1 = src;
 
-//    //Detect the keypoints
-//    std::vector<KeyPoint> keypoints_1, keypoints_2;
+    //Detect the keypoints
+    std::vector<KeyPoint> keypoints_1, keypoints_2;
 
-//#ifdef TIME
-//    t = (double)getTickCount();
-//#endif
-//    f2d->detect(img_1, keypoints_1);
+#ifdef TIME
+    t = (double)getTickCount();
+#endif
+    f2d->detect(img_1, keypoints_1);
 
-//    //Calculate descriptors (feature vectors)
-//    Mat descriptors_1, descriptors_2;
-//    f2d->compute(img_1, keypoints_1, descriptors_1);
+    //Calculate descriptors (feature vectors)
+    Mat descriptors_1, descriptors_2;
+    f2d->compute(img_1, keypoints_1, descriptors_1);
 
-//#ifdef TIME
-//    t = (double)getTickCount() - t;
-//    printf("opencv sift cost : %g ms\n", t*1000./tf);//158
-//#endif
+#ifdef TIME
+    t = (double)getTickCount() - t;
+    printf("opencv sift cost : %g ms\n", t*1000./tf);//158
+#endif
 
 //    std::cout<<"Original sift keypoints num :"<<keypoints_1.size()<<std::endl;
 //    Mat kepoint1;
@@ -445,3 +438,5 @@ int main()
 
     return 0;
 }
+
+

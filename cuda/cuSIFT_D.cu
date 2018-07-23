@@ -155,7 +155,6 @@ __global__ void test_gpu(int pitch,int height)
         printf("%f\n",pd[0][y*pitch+x]);
 }
 
-
 __global__ void findScaleSpaceExtrema_gpu(float *d_point,int p_pitch,int s, int width ,int pitch ,int height,const int threshold,const int nOctaveLayers,const int maxNum){
 
     int x = blockIdx.x*blockDim.x+threadIdx.x;
@@ -521,7 +520,7 @@ __global__ void calcOrientationHist_gpu(float *d_point,int p_pitch,float* temdat
     delete []hists;
 }
 
-__global__ void calcSIFTDescriptor_gpu(float *d_point,int p_pitch,float* d_decriptor,int pointsNum,int  nOctaveLayers)
+__global__ void calcSIFTDescriptor_gpu_bk(float *d_point,int p_pitch,float* d_decriptor,int pointsNum,int  nOctaveLayers)
 {
     //float* currptr,int x,int y,float scl_octv,int pitch,int width,int height,float ori,float* d_decriptor,int index
 
@@ -617,7 +616,7 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,int p_pitch,float* d_decri
     //traverse the boundary rectangle
     //calculate two improtant data
     //1.all dx,dy,w,ori,mag in image coordinary
-    //2.all x,y in bins coordinary(a relate coordinary)
+    //2.all x,y in bins coordinary(a related coordinary)
     for( i = -radius, k = 0; i <= radius; i++ )
         for( j = -radius; j <= radius; j++ )
         {
@@ -657,6 +656,9 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,int p_pitch,float* d_decri
                 float obin = (ok - ori)*bins_per_rad;
                 float mag = mk*wk;
 
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
+//                }
 
                 int r0 =  floor(rbin);
                 int c0 =  floor(cbin);
@@ -666,15 +668,13 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,int p_pitch,float* d_decri
                 cbin -= c0;
                 obin -= o0;
 
+//                if(o0 > n)
+//                    printf("Aa");
+
                 if( o0 < 0 )
                     o0 += n;
                 if( o0 >= n )
                     o0 -= n;
-
-//                if(x == 1936 && y ==744 ){
-//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
-//                }
-
 
                 // histogram update using tri-linear interpolation
                 float v_r1 = mag*rbin, v_r0 = mag - v_r1;
@@ -736,6 +736,1658 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,int p_pitch,float* d_decri
         nrm2 += val*val;
     }
     __syncthreads();
+    nrm2 = SIFT_INT_DESCR_FCTR/fmaxf(sqrtf(nrm2), FLT_EPSILON);
+    k = 0;
+    for( ; k < len; k++ )
+    {
+        //dst[k] = (uchar)(dst[k]*nrm2);
+        d_decriptor[pointIndex*len + k] = (uchar)(dst[k]*nrm2);
+//        if(x == 21 && y ==257 ){
+//            printf("k: %d,%f \n",k,d_decriptor[pointIndex*len + k]);
+//        }
+    }
+}
+
+__device__ int judgeValue(int idx,int height_360 ,int col_360 ,int d,int n)
+{
+    int row_Col = idx/height_360;
+    int z = idx%height_360;
+    int y = row_Col/col_360;
+    int x = row_Col%col_360;
+//    if(idx == 70)
+//    {
+//        printf(" %d %d %d ",x,y,z);
+//    }
+    if( x>0 && y>0 && x<d+1 && y<d+1 && z < n+1)
+    {
+        if(z == n)
+        {
+            z = 0;
+        }
+        return ((y-1)*(d)+x-1)*(n) + z;
+//        if(((y-1)*(d)+x-1)*(n) + z == 6)
+//            printf(" %f: ",value);
+    }
+    return -1;
+}
+
+__global__ void calcSIFTDescriptor_gpu_bk__(float *d_point,int p_pitch,float* d_decriptor,int pointsNum,int  nOctaveLayers)
+{
+    //float* currptr,int x,int y,float scl_octv,int pitch,int width,int height,float ori,float* d_decriptor,int index
+
+    //description array
+    //calcSIFTDescriptor(img, ptf, angle, size*0.5f, d, n, descriptors.ptr<float>((int)i));
+    //x,y,360-angle,scl,d,n
+    //static const int d = SIFT_DESCR_WIDTH, n = SIFT_DESCR_HIST_BINS;
+    //x y is the x y in prymid image
+    //scl_octv is the related scale in octave
+    //x,y,scl_octv has been calculated above
+    /******************calcDescriptor*****************/
+    int pointIndex = blockIdx.x*blockDim.x+threadIdx.x;
+    if(pointIndex>=pointsNum)
+        return;
+//    __shared__ float s_point[BLOCK_SIZE_ONE_DIM*KEYPOINTS_SIZE];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE]   =d_point[pointIndex*KEYPOINTS_SIZE];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+1] =d_point[pointIndex*KEYPOINTS_SIZE+1];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+2] =d_point[pointIndex*KEYPOINTS_SIZE+2];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+3] =d_point[pointIndex*KEYPOINTS_SIZE+3];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+4] =d_point[pointIndex*KEYPOINTS_SIZE+4];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+5] =d_point[pointIndex*KEYPOINTS_SIZE+5];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+6] =d_point[pointIndex*KEYPOINTS_SIZE+6];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+7] =d_point[pointIndex*KEYPOINTS_SIZE+7];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+8] =d_point[pointIndex*KEYPOINTS_SIZE+8];
+
+//    __syncthreads();
+//    float size = s_point[threadIdx.x*KEYPOINTS_SIZE+3];
+//    float ori = s_point[threadIdx.x*KEYPOINTS_SIZE+5];
+//    int s = s_point[threadIdx.x*KEYPOINTS_SIZE+6];
+//    int x = s_point[threadIdx.x*KEYPOINTS_SIZE+7];
+//    int y = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
+
+    float size =d_point[pointIndex+p_pitch*3];
+    float ori = d_point[pointIndex+p_pitch*5];
+
+
+    int x,y,o,layer;
+    unpackOctave(d_point[pointIndex],
+            d_point[pointIndex+p_pitch*1],
+            d_point[pointIndex+p_pitch*2],
+            x,y,o,layer);
+
+    float scl_octv = size/((1 << o)*2);
+
+    int width = d_oIndex[o*3];
+    int height = d_oIndex[o*3+1];
+    int pitch = d_oIndex[o*3+2];
+
+    float *currptr = pgpyr[o*(nOctaveLayers+3) + layer]+y*pitch+x;
+
+    int d = SIFT_DESCR_WIDTH,n = SIFT_DESCR_HIST_BINS;
+    ori = 360.f - ori;
+    if(std::abs(ori - 360.f) < FLT_EPSILON)
+        ori = 0.f;
+
+    //printf(" %d,%d,%f,%f,%f ",x,y,*currptr,ori,scl_octv);
+    //printf(" %d,%d,%f ",x,y,*(pgpyr[o*(nOctaveLayers+3) + layer]+1));
+
+    float cos_t = cosf(ori*(float)(CV_PI/180));
+    float sin_t = sinf(ori*(float)(CV_PI/180));
+
+    //n=8
+    float bins_per_rad = n / 360.f;
+    float exp_scale = -1.f/(d * d * 0.5f);
+    //3*scale,normalized 3*scale to 1
+    float hist_width = SIFT_DESCR_SCL_FCTR * scl_octv;
+    int radius = int(hist_width * 1.4142135623730951f * (d + 1) * 0.5f+0.5);
+    // Clip the radius to the diagonal of the image to avoid autobuffer too large exception
+    radius = fminf(radius, (int) sqrtf(((double) width)*width + ((double) height)*height));
+    cos_t /= hist_width;
+    sin_t /= hist_width;
+    //len 为特征点邻域区域内像素的数量，histlen 为直方图的数量，即特征矢量的长度，实际应为d×d×n，之所以每个变量
+    //又加上了2，是因为要为圆周循环留出一定的内存空间
+    int i, j, k, len = (radius*2+1)*(radius*2+1);
+    __shared__ float dst1[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS*BLOCK_SIZE_ONE_DIM];
+    float* dst = dst1+threadIdx.x*d*d*n;
+    //float dst[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS];
+    int rows = height, cols = width;
+    //float *buf = new float[len*6 + histlen];
+    const int histlen = (SIFT_DESCR_WIDTH+2)*(SIFT_DESCR_WIDTH+2)*(SIFT_DESCR_HIST_BINS+2);
+    float hist[histlen];
+    //__shared__ float hist[histlen*BLOCK_SIZE_ONE_DIM];
+
+
+    //init *hist = {0},because following code will use '+='
+    for( i = 0; i < d+2; i++ )
+    {
+        for( j = 0; j < d+2; j++ )
+            for( k = 0; k < n+2; k++ )
+                hist[(i*(d+2) + j)*(n+2) + k] = 0.;
+    }
+
+    //traverse the boundary rectangle
+    //calculate two improtant data
+    //1.all dx,dy,w,ori,mag in image coordinary
+    //2.all x,y in bins coordinary(a related coordinary)
+    for( i = -radius, k = 0; i <= radius; i++ )
+        for( j = -radius; j <= radius; j++ )
+        {
+            // Calculate sample's histogram array coords rotated relative to ori.
+            // Subtract 0.5 so samples that fall e.g. in the center of row 1 (i.e.
+            // r_rot = 1.5) have full weight placed in row 1 after interpolation.
+
+            float c_rot = j * cos_t - i * sin_t;
+            float r_rot = j * sin_t + i * cos_t;
+            float rbin = r_rot + d/2 - 0.5f;
+            float cbin = c_rot + d/2 - 0.5f;
+            int r = y + i, c = x + j;
+
+            //d = 4
+            if( rbin > -1 && rbin < d && cbin > -1 && cbin < d &&
+                r > 0 && r < rows - 1 && c > 0 && c < cols - 1 )
+            {
+
+                float dx = (float)(currptr[i*pitch+j+1] - currptr[i*pitch+j-1]);
+                //the positive direction is from bottom to top contrary to the image /
+                //from top to bottom.So dy = y-1 - (y+1).
+                float dy = (float)(currptr[(i-1)*pitch+j] - currptr[(i+1)*pitch+j]);
+                // float dx = (float)(img.at<sift_wt>(r, c+1) - img.at<sift_wt>(r, c-1));
+                // float dy = (float)(img.at<sift_wt>(r-1, c) - img.at<sift_wt>(r+1, c));
+                //X[k] = dx; Y[k] = dy; RBin[k] = rbin; CBin[k] = cbin;
+               // W[k] = (c_rot * c_rot + r_rot * r_rot)*exp_scale;
+
+                float wk,ok,mk;
+                wk = __expf((c_rot * c_rot + r_rot * r_rot)*exp_scale);
+                ok = atan2(dy,dx);
+                //ok = cv::cudev::atan2();
+                ok = (ok*180/CV_PI);
+                ok = ok<0? ok+360:ok;
+                mk = sqrtf(dy*dy+dx*dx);
+
+                //float rbin = RBin[k], cbin = CBin[k];
+                float obin = (ok - ori)*bins_per_rad;
+                float mag = mk*wk;
+
+
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
+//                }
+
+
+                int r0 =  floor(rbin);
+                int c0 =  floor(cbin);
+                int o0 =  floor(obin);
+
+                rbin -= r0;
+                cbin -= c0;
+                obin -= o0;
+
+//                if(o0 > n)
+//                    printf("Aa");
+
+
+                if( o0 < 0 )
+                    o0 += n;
+                if( o0 >= n )
+                    o0 -= n;
+
+
+
+                // histogram update using tri-linear interpolation
+                float v_r1 = mag*rbin, v_r0 = mag - v_r1;
+                float v_rc11 = v_r1*cbin, v_rc10 = v_r1 - v_rc11;
+                float v_rc01 = v_r0*cbin, v_rc00 = v_r0 - v_rc01;
+                float v_rco111 = v_rc11*obin, v_rco110 = v_rc11 - v_rco111;
+                float v_rco101 = v_rc10*obin, v_rco100 = v_rc10 - v_rco101;
+                float v_rco011 = v_rc01*obin, v_rco010 = v_rc01 - v_rco011;
+                float v_rco001 = v_rc00*obin, v_rco000 = v_rc00 - v_rco001;
+
+                int idx = ((r0+1)*(d+2) + c0+1)*(n+2) + o0;
+
+                hist[idx] += v_rco000;
+                hist[idx+1] += v_rco001;
+                hist[idx+(n+2)] += v_rco010;
+                hist[idx+(n+3)] += v_rco011;
+                hist[idx+(d+2)*(n+2)] += v_rco100;
+                hist[idx+(d+2)*(n+2)+1] += v_rco101;
+                hist[idx+(d+3)*(n+2)] += v_rco110;
+                hist[idx+(d+3)*(n+2)+1] += v_rco111;
+//                int idx1 = judgeValue(idx,n+2,d+2,d,n);
+//                if(idx1>0)
+//                    hist[idx1] += v_rco000;
+//                idx1 = judgeValue(idx+1,n+2,d+2,d,n);
+//                if(idx1>0)
+//                    hist[idx1] += v_rco010;
+//                idx1 = judgeValue(idx+(n+2)+(n+3),n+2,d+2,d,n);
+//                if(idx1>0)
+//                    hist[idx1] += v_rco011;
+//                idx1 = judgeValue(idx+(n+3),n+2,d+2,d,n);
+//                if(idx1>0)
+//                    hist[idx1] += v_rco100;
+//                idx1 = judgeValue(idx+(d+2)*(n+2),n+2,d+2,d,n);
+//                if(idx1>0)
+//                    hist[idx1] += v_rco101;
+//                idx1 = judgeValue(idx+(d+2)*(n+2)+1,n+2,d+2,d,n);
+//                if(idx1>0)
+//                    hist[idx1] += v_rco110;
+//                idx1 = judgeValue(idx+(d+3)*(n+2),n+2,d+2,d,n);
+//                if(idx1>0)
+//                    hist[idx1] += v_rco111;
+                k++;
+            }
+        }
+//    if(x == 1936 && y ==744 ){
+//        for(int i =0;i<360;i++)
+//            printf(" %f ",hist[i]);
+//        printf("k: %d",k);
+//    }
+
+
+    // finalize histogram, since the orientation histograms are circular
+    for( i = 0; i < d; i++ )
+        for( j = 0; j < d; j++ )
+        {
+            int idx = ((i+1)*(d+2) + (j+1))*(n+2);
+            hist[idx] += hist[idx+n];
+            hist[idx+1] += hist[idx+n+1];
+            for( k = 0; k < n; k++ )
+               dst[(i*d + j)*n + k] = hist[idx+k];
+        }
+    // copy histogram to the descriptor,
+    // apply hysteresis thresholding
+    // and scale the result, so that it can be easily converted
+    // to byte array
+    float nrm2 = 0;
+    len = d*d*n;
+    k = 0;
+    for( ; k < len; k++ )
+        nrm2 += dst[k]*dst[k];
+
+    float thr = sqrtf(nrm2)*SIFT_DESCR_MAG_THR;
+
+    i = 0, nrm2 = 0;
+
+    for( ; i < len; i++ )
+    {
+        float val = fminf(dst[i], thr);
+        dst[i] = val;
+        nrm2 += val*val;
+    }
+    __syncthreads();
+    nrm2 = SIFT_INT_DESCR_FCTR/fmaxf(sqrtf(nrm2), FLT_EPSILON);
+    k = 0;
+    for( ; k < len; k++ )
+    {
+        //dst[k] = (uchar)(dst[k]*nrm2);
+        d_decriptor[pointIndex*len + k] = (uchar)(dst[k]*nrm2);
+//        if(x == 21 && y ==257 ){
+//            printf("k: %d,%f \n",k,d_decriptor[pointIndex*len + k]);
+//        }
+    }
+}
+
+__device__ void fillValue_128(float* hist,int idx,float value,int height_360 ,int col_360 ,int d,int n)
+{
+    int row_Col = idx/height_360;
+    int z = idx%height_360;
+    int y = row_Col/col_360;
+    int x = row_Col%col_360;
+//    if(idx == 70)
+//    {
+//        printf(" %d %d %d ",x,y,z);
+//    }
+    if( x>0 && y>0 && x<d+1 && y<d+1 && z < n+1)
+    {
+        if(z == n)
+        {
+            z = 0;
+        }
+        hist[((y-1)*(d)+x-1)*(n) + z] += value;
+//        if(((y-1)*(d)+x-1)*(n) + z == 6)
+//            printf(" %f: ",value);
+    }
+
+//    if( x==1 && y==1 && z == n+1)
+//    {
+//        if(z == n)
+//        {
+//            z = 0;
+//        }
+//        hist[((y-1)*(d)+x-1)*(n) + z] += value;
+////        if(((y-1)*(d)+x-1)*(n) + z == 6)
+////            printf(" %f: ",value);
+//    }
+
+}
+
+__global__ void calcSIFTDescriptor_gpu__test(float *d_point,int p_pitch,float* d_decriptor,int pointsNum,int  nOctaveLayers)
+{
+    //float* currptr,int x,int y,float scl_octv,int pitch,int width,int height,float ori,float* d_decriptor,int index
+
+    //description array
+    //calcSIFTDescriptor(img, ptf, angle, size*0.5f, d, n, descriptors.ptr<float>((int)i));
+    //x,y,360-angle,scl,d,n
+    //static const int d = SIFT_DESCR_WIDTH, n = SIFT_DESCR_HIST_BINS;
+    //x y is the x y in prymid image
+    //scl_octv is the related scale in octave
+    //x,y,scl_octv has been calculated above
+    /******************calcDescriptor*****************/
+    int pointIndex = blockIdx.x*blockDim.x+threadIdx.x;
+    if(pointIndex>=pointsNum)
+        return;
+//    __shared__ float s_point[BLOCK_SIZE_ONE_DIM*KEYPOINTS_SIZE];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE]   =d_point[pointIndex*KEYPOINTS_SIZE];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+1] =d_point[pointIndex*KEYPOINTS_SIZE+1];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+2] =d_point[pointIndex*KEYPOINTS_SIZE+2];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+3] =d_point[pointIndex*KEYPOINTS_SIZE+3];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+4] =d_point[pointIndex*KEYPOINTS_SIZE+4];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+5] =d_point[pointIndex*KEYPOINTS_SIZE+5];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+6] =d_point[pointIndex*KEYPOINTS_SIZE+6];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+7] =d_point[pointIndex*KEYPOINTS_SIZE+7];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+8] =d_point[pointIndex*KEYPOINTS_SIZE+8];
+
+//    __syncthreads();
+//    float size = s_point[threadIdx.x*KEYPOINTS_SIZE+3];
+//    float ori = s_point[threadIdx.x*KEYPOINTS_SIZE+5];
+//    int s = s_point[threadIdx.x*KEYPOINTS_SIZE+6];
+//    int x = s_point[threadIdx.x*KEYPOINTS_SIZE+7];
+//    int y = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
+
+    float size =d_point[pointIndex+p_pitch*3];
+    float ori = d_point[pointIndex+p_pitch*5];
+
+
+    int x,y,o,layer;
+    unpackOctave(d_point[pointIndex],
+            d_point[pointIndex+p_pitch*1],
+            d_point[pointIndex+p_pitch*2],
+            x,y,o,layer);
+
+    float scl_octv = size/((1 << o)*2);
+
+    int width = d_oIndex[o*3];
+    int height = d_oIndex[o*3+1];
+    int pitch = d_oIndex[o*3+2];
+
+    float *currptr = pgpyr[o*(nOctaveLayers+3) + layer]+y*pitch+x;
+
+    int d = SIFT_DESCR_WIDTH,n = SIFT_DESCR_HIST_BINS;
+    ori = 360.f - ori;
+    if(std::abs(ori - 360.f) < FLT_EPSILON)
+        ori = 0.f;
+
+    //printf(" %d,%d,%f,%f,%f ",x,y,*currptr,ori,scl_octv);
+    //printf(" %d,%d,%f ",x,y,*(pgpyr[o*(nOctaveLayers+3) + layer]+1));
+
+    float cos_t = cosf(ori*(float)(CV_PI/180));
+    float sin_t = sinf(ori*(float)(CV_PI/180));
+
+    //n=8
+    float bins_per_rad = n / 360.f;
+    float exp_scale = -1.f/(d * d * 0.5f);
+    //3*scale,normalized 3*scale to 1
+    float hist_width = SIFT_DESCR_SCL_FCTR * scl_octv;
+    int radius = int(hist_width * 1.4142135623730951f * (d + 1) * 0.5f+0.5);
+    // Clip the radius to the diagonal of the image to avoid autobuffer too large exception
+    radius = fminf(radius, (int) sqrtf(((double) width)*width + ((double) height)*height));
+    cos_t /= hist_width;
+    sin_t /= hist_width;
+    //len 为特征点邻域区域内像素的数量，histlen 为直方图的数量，即特征矢量的长度，实际应为d×d×n，之所以每个变量
+    //又加上了2，是因为要为圆周循环留出一定的内存空间
+    int i, j, k, len = (radius*2+1)*(radius*2+1);
+//    __shared__ float dst1[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS*BLOCK_SIZE_ONE_DIM];
+//    float* dst = dst1+threadIdx.x*d*d*n;
+    //float dst[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS];
+    int rows = height, cols = width;
+    //float *buf = new float[len*6 + histlen];
+    const int histlen = (SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS);
+    __shared__ float dst1[histlen*BLOCK_SIZE_ONE_DIM];
+    float* hist = dst1+threadIdx.x*d*d*n;
+    //__shared__ float hist[histlen*BLOCK_SIZE_ONE_DIM];
+
+
+    //init *hist = {0},because following code will use '+='
+    for( i = 0; i < d; i++ )
+    {
+        for( j = 0; j < d; j++ )
+            for( k = 0; k < n; k++ )
+                hist[(i*(d) + j)*(n) + k] = 0.;
+    }
+
+    //traverse the boundary rectangle
+    //calculate two improtant data
+    //1.all dx,dy,w,ori,mag in image coordinary
+    //2.all x,y in bins coordinary(a related coordinary)
+    for( i = -radius, k = 0; i <= radius; i++ )
+        for( j = -radius; j <= radius; j++ )
+        {
+            // Calculate sample's histogram array coords rotated relative to ori.
+            // Subtract 0.5 so samples that fall e.g. in the center of row 1 (i.e.
+            // r_rot = 1.5) have full weight placed in row 1 after interpolation.
+
+            float c_rot = j * cos_t - i * sin_t;
+            float r_rot = j * sin_t + i * cos_t;
+            float rbin = r_rot + d/2 - 0.5f;
+            float cbin = c_rot + d/2 - 0.5f;
+            int r = y + i, c = x + j;
+
+            //d = 4
+            if( rbin > -1 && rbin < d-1 && cbin > -1 && cbin < d-1 &&
+                r > 0 && r < rows - 1 && c > 0 && c < cols - 1 )
+            {
+
+                float dx = (float)(currptr[i*pitch+j+1] - currptr[i*pitch+j-1]);
+                //the positive direction is from bottom to top contrary to the image /
+                //from top to bottom.So dy = y-1 - (y+1).
+                float dy = (float)(currptr[(i-1)*pitch+j] - currptr[(i+1)*pitch+j]);
+                // float dx = (float)(img.at<sift_wt>(r, c+1) - img.at<sift_wt>(r, c-1));
+                // float dy = (float)(img.at<sift_wt>(r-1, c) - img.at<sift_wt>(r+1, c));
+                //X[k] = dx; Y[k] = dy; RBin[k] = rbin; CBin[k] = cbin;
+               // W[k] = (c_rot * c_rot + r_rot * r_rot)*exp_scale;
+
+                float wk,ok,mk;
+                wk = __expf((c_rot * c_rot + r_rot * r_rot)*exp_scale);
+                ok = atan2(dy,dx);
+                //ok = cv::cudev::atan2();
+                ok = (ok*180/CV_PI);
+                ok = ok<0? ok+360:ok;
+                mk = sqrtf(dy*dy+dx*dx);
+
+                //float rbin = RBin[k], cbin = CBin[k];
+                float obin = (ok - ori)*bins_per_rad;
+                float mag = mk*wk;
+
+
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
+//                }
+
+
+                int r0 =  floor(rbin);
+                int c0 =  floor(cbin);
+                int o0 =  floor(obin);
+
+                rbin -= r0;
+                cbin -= c0;
+                obin -= o0;
+
+//                if(o0 > n)
+//                    printf("Aa");
+
+
+                if( o0 < 0 )
+                    o0 += n;
+                if( o0 >= n )
+                    o0 -= n;
+
+
+
+                // histogram update using tri-linear interpolation
+                float v_r1 = mag*rbin, v_r0 = mag - v_r1;
+                float v_rc11 = v_r1*cbin, v_rc10 = v_r1 - v_rc11;
+                float v_rc01 = v_r0*cbin, v_rc00 = v_r0 - v_rc01;
+                float v_rco111 = v_rc11*obin, v_rco110 = v_rc11 - v_rco111;
+                float v_rco101 = v_rc10*obin, v_rco100 = v_rc10 - v_rco101;
+                float v_rco011 = v_rc01*obin, v_rco010 = v_rc01 - v_rco011;
+                float v_rco001 = v_rc00*obin, v_rco000 = v_rc00 - v_rco001;
+
+
+                int idx = ((r0+1)*(d+2) + c0+1)*(n+2) + o0;
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d",idx);
+//                }
+//                idx = idx>80 ? idx - 50:idx;
+                fillValue_128(hist,idx,v_rco000,n+2,d+2,d,n);
+                fillValue_128(hist,idx+1,v_rco001,n+2,d+2,d,n);
+                fillValue_128(hist,idx+(n+2),v_rco010,n+2,d+2,d,n);
+                fillValue_128(hist,idx+(n+3),v_rco011,n+2,d+2,d,n);
+                fillValue_128(hist,idx+(d+2)*(n+2),v_rco100,n+2,d+2,d,n);
+                fillValue_128(hist,idx+(d+2)*(n+2)+1,v_rco101,n+2,d+2,d,n);
+                fillValue_128(hist,idx+(d+3)*(n+2),v_rco110,n+2,d+2,d,n);
+                fillValue_128(hist,idx+(d+3)*(n+2)+1,v_rco111,n+2,d+2,d,n);
+
+                k++;
+            }
+        }
+//    if(x == 1936 && y ==744 ){
+//        for(int i =0;i<360;i++)
+//            printf(" %f ",hist[i]);
+//        printf("k: %d",k);
+//    }
+
+    float* dst = hist;
+//    float nrm2 = 1;
+//    len = 128;
+    // finalize histogram, since the orientation histograms are circular
+//    for( i = 0; i < d; i++ )
+//        for( j = 0; j < d; j++ )
+//        {
+//            int idx = ((i+1)*(d+2) + (j+1))*(n+2);
+//            hist[idx] += hist[idx+n];
+//            hist[idx+1] += hist[idx+n+1];
+//            for( k = 0; k < n; k++ )
+//               dst[(i*d + j)*n + k] = hist[idx+k];
+//        }
+    // copy histogram to the descriptor,
+    // apply hysteresis thresholding
+    // and scale the result, so that it can be easily converted
+    // to byte array
+
+    float nrm2 = 0;
+    len = d*d*n;
+    k = 0;
+    for( ; k < len; k++ )
+        nrm2 += dst[k]*dst[k];
+
+    float thr = sqrtf(nrm2)*SIFT_DESCR_MAG_THR;
+
+    i = 0, nrm2 = 0;
+
+    for( ; i < len; i++ )
+    {
+        float val = fminf(dst[i], thr);
+        dst[i] = val;
+        nrm2 += val*val;
+    }
+    __syncthreads();
+    nrm2 = SIFT_INT_DESCR_FCTR/fmaxf(sqrtf(nrm2), FLT_EPSILON);
+    k = 0;
+    for( ; k < len; k++ )
+    {
+        //dst[k] = (uchar)(dst[k]*nrm2);
+        d_decriptor[pointIndex*len + k] = (uchar)(dst[k]*nrm2);
+//        if(x == 21 && y ==257 ){
+//            printf("k: %d,%f \n",k,d_decriptor[pointIndex*len + k]);
+//        }
+    }
+}
+
+
+__global__ void calcSIFTDescriptor_gpu_debug(float *d_point,int p_pitch,float* d_decriptor,int pointsNum,int  nOctaveLayers)
+{
+    //float* currptr,int x,int y,float scl_octv,int pitch,int width,int height,float ori,float* d_decriptor,int index
+
+    //description array
+    //calcSIFTDescriptor(img, ptf, angle, size*0.5f, d, n, descriptors.ptr<float>((int)i));
+    //x,y,360-angle,scl,d,n
+    //static const int d = SIFT_DESCR_WIDTH, n = SIFT_DESCR_HIST_BINS;
+    //x y is the x y in prymid image
+    //scl_octv is the related scale in octave
+    //x,y,scl_octv has been calculated above
+    /******************calcDescriptor*****************/
+    int pointIndex = blockIdx.x*blockDim.x+threadIdx.x;
+    if(pointIndex>=pointsNum)
+        return;
+
+    float size =d_point[pointIndex+p_pitch*3];
+    float ori = d_point[pointIndex+p_pitch*5];
+
+
+    int x,y,o,layer;
+    unpackOctave(d_point[pointIndex],
+            d_point[pointIndex+p_pitch*1],
+            d_point[pointIndex+p_pitch*2],
+            x,y,o,layer);
+
+    float scl_octv = size/((1 << o)*2);
+
+    int width = d_oIndex[o*3];
+    int height = d_oIndex[o*3+1];
+    int pitch = d_oIndex[o*3+2];
+
+    float *currptr = pgpyr[o*(nOctaveLayers+3) + layer]+y*pitch+x;
+
+    int d = SIFT_DESCR_WIDTH,n = SIFT_DESCR_HIST_BINS;
+    ori = 360.f - ori;
+    if(std::abs(ori - 360.f) < FLT_EPSILON)
+        ori = 0.f;
+
+    //printf(" %d,%d,%f,%f,%f ",x,y,*currptr,ori,scl_octv);
+    //printf(" %d,%d,%f ",x,y,*(pgpyr[o*(nOctaveLayers+3) + layer]+1));
+
+    float cos_t = cosf(ori*(float)(CV_PI/180));
+    float sin_t = sinf(ori*(float)(CV_PI/180));
+
+    //n=8
+    float bins_per_rad = n / 360.f;
+    float exp_scale = -1.f/(d * d * 0.5f);
+    //3*scale,normalized 3*scale to 1
+    float hist_width = SIFT_DESCR_SCL_FCTR * scl_octv;
+    int radius = int(hist_width * 1.4142135623730951f * (d + 1) * 0.5f+0.5);
+    // Clip the radius to the diagonal of the image to avoid autobuffer too large exception
+    radius = fminf(radius, (int) sqrtf(((double) width)*width + ((double) height)*height));
+    cos_t /= hist_width;
+    sin_t /= hist_width;
+    //len 为特征点邻域区域内像素的数量，histlen 为直方图的数量，即特征矢量的长度，实际应为d×d×n，之所以每个变量
+    //又加上了2，是因为要为圆周循环留出一定的内存空间
+    int i, j, k, len = (radius*2+1)*(radius*2+1);
+    __shared__ float dst1[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS*BLOCK_SIZE_ONE_DIM];
+    float* dst = dst1+threadIdx.x*d*d*n;
+    //float dst[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS];
+    int rows = height, cols = width;
+    //float *buf = new float[len*6 + histlen];
+    const int histlen = (SIFT_DESCR_WIDTH+2)*(SIFT_DESCR_WIDTH+2)*(SIFT_DESCR_HIST_BINS+2);
+    float hist[histlen];
+
+
+    //__shared__ float hist[histlen*BLOCK_SIZE_ONE_DIM];
+
+
+    //init *hist = {0},because following code will use '+='
+    for( i = 0; i < d+2; i++ )
+    {
+        for( j = 0; j < d+2; j++ )
+            for( k = 0; k < n+2; k++ )
+                hist[(i*(d+2) + j)*(n+2) + k] = 0.;
+    }
+
+    //traverse the boundary rectangle
+    //calculate two improtant data
+    //1.all dx,dy,w,ori,mag in image coordinary
+    //2.all x,y in bins coordinary(a related coordinary)
+    for( i = -radius, k = 0; i <= radius; i++ )
+        for( j = -radius; j <= radius; j++ )
+        {
+            // Calculate sample's histogram array coords rotated relative to ori.
+            // Subtract 0.5 so samples that fall e.g. in the center of row 1 (i.e.
+            // r_rot = 1.5) have full weight placed in row 1 after interpolation.
+
+            float c_rot = j * cos_t - i * sin_t;
+            float r_rot = j * sin_t + i * cos_t;
+            float rbin = r_rot + d/2 - 0.5f;
+            float cbin = c_rot + d/2 - 0.5f;
+            int r = y + i, c = x + j;
+
+            //d = 4
+            if( rbin > -1 && rbin < d && cbin > -1 && cbin < d &&
+                r > 0 && r < rows - 1 && c > 0 && c < cols - 1 )
+            {
+
+                float dx = (float)(currptr[i*pitch+j+1] - currptr[i*pitch+j-1]);
+                //the positive direction is from bottom to top contrary to the image /
+                //from top to bottom.So dy = y-1 - (y+1).
+                float dy = (float)(currptr[(i-1)*pitch+j] - currptr[(i+1)*pitch+j]);
+                // float dx = (float)(img.at<sift_wt>(r, c+1) - img.at<sift_wt>(r, c-1));
+                // float dy = (float)(img.at<sift_wt>(r-1, c) - img.at<sift_wt>(r+1, c));
+                //X[k] = dx; Y[k] = dy; RBin[k] = rbin; CBin[k] = cbin;
+               // W[k] = (c_rot * c_rot + r_rot * r_rot)*exp_scale;
+
+                float wk,ok,mk;
+                wk = __expf((c_rot * c_rot + r_rot * r_rot)*exp_scale);
+                ok = atan2(dy,dx);
+                //ok = cv::cudev::atan2();
+                ok = (ok*180/CV_PI);
+                ok = ok<0? ok+360:ok;
+                mk = sqrtf(dy*dy+dx*dx);
+
+                //float rbin = RBin[k], cbin = CBin[k];
+                float obin = (ok - ori)*bins_per_rad;
+                float mag = mk*wk;
+
+
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
+//                }
+
+
+                int r0 =  floor(rbin);
+                int c0 =  floor(cbin);
+                int o0 =  floor(obin);
+
+                rbin -= r0;
+                cbin -= c0;
+                obin -= o0;
+
+//                if(o0 > n)
+//                    printf("Aa");
+
+
+                if( o0 < 0 )
+                    o0 += n;
+                if( o0 >= n )
+                    o0 -= n;
+
+
+
+                // histogram update using tri-linear interpolation
+                float v_r1 = mag*rbin, v_r0 = mag - v_r1;
+                float v_rc11 = v_r1*cbin, v_rc10 = v_r1 - v_rc11;
+                float v_rc01 = v_r0*cbin, v_rc00 = v_r0 - v_rc01;
+                float v_rco111 = v_rc11*obin, v_rco110 = v_rc11 - v_rco111;
+                float v_rco101 = v_rc10*obin, v_rco100 = v_rc10 - v_rco101;
+                float v_rco011 = v_rc01*obin, v_rco010 = v_rc01 - v_rco011;
+                float v_rco001 = v_rc00*obin, v_rco000 = v_rc00 - v_rco001;
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
+//                }
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,v_rco001,v_rco010,v_rco011,v_rco100,v_rco101);
+//                }
+
+                int idx = ((r0+1)*(d+2) + c0+1)*(n+2) + o0;
+                hist[idx] += v_rco000;
+                hist[idx+1] += v_rco001;
+                hist[idx+(n+2)] += v_rco010;
+                hist[idx+(n+3)] += v_rco011;
+                hist[idx+(d+2)*(n+2)] += v_rco100;
+                hist[idx+(d+2)*(n+2)+1] += v_rco101;
+                hist[idx+(d+3)*(n+2)] += v_rco110;
+                hist[idx+(d+3)*(n+2)+1] += v_rco111;
+
+                k++;
+            }
+        }
+//    if(x == 1936 && y ==744 ){
+//        for(int i =0;i<360;i++)
+//            printf(" %f ",hist[i]);
+//        printf("k: %d",k);
+//    }
+
+
+    // finalize histogram, since the orientation histograms are circular
+    for( i = 0; i < d; i++ )
+        for( j = 0; j < d; j++ )
+        {
+            int idx = ((i+1)*(d+2) + (j+1))*(n+2);
+            //hist[idx+n+1] always = 0.,n+2 is useless, n+1 is engough and necessary
+            //because z = 7.5 it will contribute or interpolate to (x,y,7.0) and (x,y,8)
+            //z = 8 i.e. z = 0; so n+1 is necessary and hist[idx+1] += hist[idx+n+1]; is
+            //right.
+            hist[idx] += hist[idx+n];
+            hist[idx+1] += hist[idx+n+1];
+//            if(hist[idx+n + 1] != 0.)
+//                printf("asa");
+            for( k = 0; k < n; k++ )
+               dst[(i*d + j)*n + k] = hist[idx+k];
+        }
+
+
+    const int histlen1 = (SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS);
+    float hist1[histlen1];
+
+    //init *hist = {0},because following code will use '+='
+    for( i = 0; i < d; i++ )
+    {
+        for( j = 0; j < d; j++ )
+            for( k = 0; k < n; k++ )
+                hist1[(i*(d) + j)*(n) + k] = 0.;
+    }
+
+    //traverse the boundary rectangle
+    //calculate two improtant data
+    //1.all dx,dy,w,ori,mag in image coordinary
+    //2.all x,y in bins coordinary(a related coordinary)
+    for( i = -radius, k = 0; i <= radius; i++ )
+        for( j = -radius; j <= radius; j++ )
+        {
+            // Calculate sample's histogram array coords rotated relative to ori.
+            // Subtract 0.5 so samples that fall e.g. in the center of row 1 (i.e.
+            // r_rot = 1.5) have full weight placed in row 1 after interpolation.
+
+            float c_rot = j * cos_t - i * sin_t;
+            float r_rot = j * sin_t + i * cos_t;
+            float rbin = r_rot + d/2 - 0.5f;
+            float cbin = c_rot + d/2 - 0.5f;
+            int r = y + i, c = x + j;
+
+            //d = 4
+            if( rbin > -1 && rbin < d && cbin > -1 && cbin < d &&
+                r > 0 && r < rows - 1 && c > 0 && c < cols - 1 )
+            {
+
+                float dx = (float)(currptr[i*pitch+j+1] - currptr[i*pitch+j-1]);
+                //the positive direction is from bottom to top contrary to the image /
+                //from top to bottom.So dy = y-1 - (y+1).
+                float dy = (float)(currptr[(i-1)*pitch+j] - currptr[(i+1)*pitch+j]);
+                // float dx = (float)(img.at<sift_wt>(r, c+1) - img.at<sift_wt>(r, c-1));
+                // float dy = (float)(img.at<sift_wt>(r-1, c) - img.at<sift_wt>(r+1, c));
+                //X[k] = dx; Y[k] = dy; RBin[k] = rbin; CBin[k] = cbin;
+               // W[k] = (c_rot * c_rot + r_rot * r_rot)*exp_scale;
+
+                float wk,ok,mk;
+                wk = __expf((c_rot * c_rot + r_rot * r_rot)*exp_scale);
+                ok = atan2(dy,dx);
+                //ok = cv::cudev::atan2();
+                ok = (ok*180/CV_PI);
+                ok = ok<0? ok+360:ok;
+                mk = sqrtf(dy*dy+dx*dx);
+
+                //float rbin = RBin[k], cbin = CBin[k];
+                float obin = (ok - ori)*bins_per_rad;
+                float mag = mk*wk;
+
+
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
+//                }
+
+
+                int r0 =  floor(rbin);
+                int c0 =  floor(cbin);
+                int o0 =  floor(obin);
+
+                rbin -= r0;
+                cbin -= c0;
+                obin -= o0;
+
+//                if(o0 > n)
+//                    printf("Aa");
+
+
+                if( o0 < 0 )
+                    o0 += n;
+                if( o0 >= n )
+                    o0 -= n;
+
+
+
+                // histogram update using tri-linear interpolation
+                float v_r1 = mag*rbin, v_r0 = mag - v_r1;
+                float v_rc11 = v_r1*cbin, v_rc10 = v_r1 - v_rc11;
+                float v_rc01 = v_r0*cbin, v_rc00 = v_r0 - v_rc01;
+                float v_rco111 = v_rc11*obin, v_rco110 = v_rc11 - v_rco111;
+                float v_rco101 = v_rc10*obin, v_rco100 = v_rc10 - v_rco101;
+                float v_rco011 = v_rc01*obin, v_rco010 = v_rc01 - v_rco011;
+                float v_rco001 = v_rc00*obin, v_rco000 = v_rc00 - v_rco001;
+
+                int idx = ((r0+1)*(d+2) + c0+1)*(n+2) + o0;
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
+//                }
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,v_rco001,v_rco010,v_rco011,v_rco100,v_rco101);
+//                }
+
+                fillValue_128(hist1,idx,v_rco000,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+1,v_rco001,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(n+2),v_rco010,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(n+3),v_rco011,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+2)*(n+2),v_rco100,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+2)*(n+2)+1,v_rco101,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+3)*(n+2),v_rco110,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+3)*(n+2)+1,v_rco111,n+2,d+2,d,n);
+//                hist[idx] += v_rco000;
+//                hist[idx+1] += v_rco001;
+//                hist[idx+(n+2)] += v_rco010;
+//                hist[idx+(n+3)] += v_rco011;
+//                hist[idx+(d+2)*(n+2)] += v_rco100;
+//                hist[idx+(d+2)*(n+2)+1] += v_rco101;
+//                hist[idx+(d+3)*(n+2)] += v_rco110;
+//                hist[idx+(d+3)*(n+2)+1] += v_rco111;
+                k++;
+            }
+        }
+
+    float dd = 0.;
+    for( k = 0; k < 128; k++ ){
+        dd += std::abs(hist1[k] - dst[k]);
+    }
+    //printf(" %f ",dd);
+
+    //if(x == 440*2 && y ==322*2 ){
+//        for( k = 0; k < 128; k++ ){
+//            if(std::abs(hist1[k] - dst[k]) > 0.0001)
+//                printf(" %d \n",k);
+//        }
+    //}
+
+
+
+    if(x == 440*2 && y ==322*2 ){
+        for( k = 0; k < 128; k++ ){
+            printf(" %f ",std::abs(hist1[k]));
+        }
+        printf("\n[0][0] = %f \n",std::abs(hist1[0]));
+    }
+
+    if(x == 440*2 && y ==322*2 ){
+        printf(" \n ");
+        for( k = 0; k < 360; k++ ){
+            printf(" %f ",std::abs(hist[k]));
+        }
+        printf("\n[0][0] = %f \n",std::abs(hist[70]));
+    }
+
+    if(x == 440*2 && y ==322*2 ){
+        printf(" \n ");
+        for( k = 0; k < 128; k++ ){
+            printf(" %f ",std::abs(dst[k]));
+        }
+        printf("\n[0][0] = %f \n",std::abs(dst[0]));
+    }
+    //dst = hist1;
+    // copy histogram to the descriptor,
+    // apply hysteresis thresholding
+    // and scale the result, so that it can be easily converted
+    // to byte array
+    float nrm2 = 0;
+    len = d*d*n;
+    k = 0;
+    for( ; k < len; k++ )
+        nrm2 += dst[k]*dst[k];
+
+    float thr = sqrtf(nrm2)*SIFT_DESCR_MAG_THR;
+
+    i = 0, nrm2 = 0;
+
+    for( ; i < len; i++ )
+    {
+        float val = fminf(dst[i], thr);
+        dst[i] = val;
+        nrm2 += val*val;
+    }
+    __syncthreads();
+    nrm2 = SIFT_INT_DESCR_FCTR/fmaxf(sqrtf(nrm2), FLT_EPSILON);
+    k = 0;
+    for( ; k < len; k++ )
+    {
+        //dst[k] = (uchar)(dst[k]*nrm2);
+        d_decriptor[pointIndex*len + k] = (uchar)(dst[k]*nrm2);
+//        if(x == 21 && y ==257 ){
+//            printf("k: %d,%f \n",k,d_decriptor[pointIndex*len + k]);
+//        }
+    }
+}
+
+__global__ void calcSIFTDescriptor_gpu(float *d_point,int p_pitch,float* d_decriptor,int pointsNum,int  nOctaveLayers)
+{
+    //float* currptr,int x,int y,float scl_octv,int pitch,int width,int height,float ori,float* d_decriptor,int index
+
+    //description array
+    //calcSIFTDescriptor(img, ptf, angle, size*0.5f, d, n, descriptors.ptr<float>((int)i));
+    //x,y,360-angle,scl,d,n
+    //static const int d = SIFT_DESCR_WIDTH, n = SIFT_DESCR_HIST_BINS;
+    //x y is the x y in prymid image
+    //scl_octv is the related scale in octave
+    //x,y,scl_octv has been calculated above
+    /******************calcDescriptor*****************/
+    int pointIndex = blockIdx.x*blockDim.x+threadIdx.x;
+    if(pointIndex>=pointsNum)
+        return;
+
+    float size =d_point[pointIndex+p_pitch*3];
+    float ori = d_point[pointIndex+p_pitch*5];
+
+
+    int x,y,o,layer;
+    unpackOctave(d_point[pointIndex],
+            d_point[pointIndex+p_pitch*1],
+            d_point[pointIndex+p_pitch*2],
+            x,y,o,layer);
+
+    float scl_octv = size/((1 << o)*2);
+
+    int width = d_oIndex[o*3];
+    int height = d_oIndex[o*3+1];
+    int pitch = d_oIndex[o*3+2];
+
+    float *currptr = pgpyr[o*(nOctaveLayers+3) + layer]+y*pitch+x;
+
+    int d = SIFT_DESCR_WIDTH,n = SIFT_DESCR_HIST_BINS;
+    ori = 360.f - ori;
+    if(std::abs(ori - 360.f) < FLT_EPSILON)
+        ori = 0.f;
+
+    //printf(" %d,%d,%f,%f,%f ",x,y,*currptr,ori,scl_octv);
+    //printf(" %d,%d,%f ",x,y,*(pgpyr[o*(nOctaveLayers+3) + layer]+1));
+
+    float cos_t = cosf(ori*(float)(CV_PI/180));
+    float sin_t = sinf(ori*(float)(CV_PI/180));
+
+    //n=8
+    float bins_per_rad = n / 360.f;
+    float exp_scale = -1.f/(d * d * 0.5f);
+    //3*scale,normalized 3*scale to 1
+    float hist_width = SIFT_DESCR_SCL_FCTR * scl_octv;
+    int radius = int(hist_width * 1.4142135623730951f * (d + 1) * 0.5f+0.5);
+    // Clip the radius to the diagonal of the image to avoid autobuffer too large exception
+    radius = fminf(radius, (int) sqrtf(((double) width)*width + ((double) height)*height));
+    cos_t /= hist_width;
+    sin_t /= hist_width;
+    //len 为特征点邻域区域内像素的数量，histlen 为直方图的数量，即特征矢量的长度，实际应为d×d×n，之所以每个变量
+    //又加上了2，是因为要为圆周循环留出一定的内存空间
+    int i, j, k, len = (radius*2+1)*(radius*2+1);
+    //__shared__ float dst1[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS*BLOCK_SIZE_ONE_DIM];
+    //float dst[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS];
+    int rows = height, cols = width;
+
+    const int histlen1 = (SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS);
+    __shared__ float hist[(SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS)*BLOCK_SIZE_ONE_DIM];
+    float* hist1 = hist+threadIdx.x*d*d*n;
+    //init *hist = {0},because following code will use '+='
+    for( i = 0; i < d; i++ )
+    {
+        for( j = 0; j < d; j++ )
+            for( k = 0; k < n; k++ )
+                hist1[(i*(d) + j)*(n) + k] = 0.;
+    }
+
+    //traverse the boundary rectangle
+    //calculate two improtant data
+    //1.all dx,dy,w,ori,mag in image coordinary
+    //2.all x,y in bins coordinary(a related coordinary)
+    for( i = -radius, k = 0; i <= radius; i++ )
+        for( j = -radius; j <= radius; j++ )
+        {
+            // Calculate sample's histogram array coords rotated relative to ori.
+            // Subtract 0.5 so samples that fall e.g. in the center of row 1 (i.e.
+            // r_rot = 1.5) have full weight placed in row 1 after interpolation.
+
+            float c_rot = j * cos_t - i * sin_t;
+            float r_rot = j * sin_t + i * cos_t;
+            float rbin = r_rot + d/2 - 0.5f;
+            float cbin = c_rot + d/2 - 0.5f;
+            int r = y + i, c = x + j;
+
+            //d = 4
+            if( rbin > -1 && rbin < d && cbin > -1 && cbin < d &&
+                r > 0 && r < rows - 1 && c > 0 && c < cols - 1 )
+            {
+
+                float dx = (float)(currptr[i*pitch+j+1] - currptr[i*pitch+j-1]);
+                //the positive direction is from bottom to top contrary to the image /
+                //from top to bottom.So dy = y-1 - (y+1).
+                float dy = (float)(currptr[(i-1)*pitch+j] - currptr[(i+1)*pitch+j]);
+                // float dx = (float)(img.at<sift_wt>(r, c+1) - img.at<sift_wt>(r, c-1));
+                // float dy = (float)(img.at<sift_wt>(r-1, c) - img.at<sift_wt>(r+1, c));
+                //X[k] = dx; Y[k] = dy; RBin[k] = rbin; CBin[k] = cbin;
+               // W[k] = (c_rot * c_rot + r_rot * r_rot)*exp_scale;
+
+                float wk,ok,mk;
+                wk = __expf((c_rot * c_rot + r_rot * r_rot)*exp_scale);
+                ok = atan2(dy,dx);
+                //ok = cv::cudev::atan2();
+                ok = (ok*180/CV_PI);
+                ok = ok<0? ok+360:ok;
+                mk = sqrtf(dy*dy+dx*dx);
+
+                //float rbin = RBin[k], cbin = CBin[k];
+                float obin = (ok - ori)*bins_per_rad;
+                float mag = mk*wk;
+
+
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
+//                }
+
+
+                int r0 =  floor(rbin);
+                int c0 =  floor(cbin);
+                int o0 =  floor(obin);
+
+                rbin -= r0;
+                cbin -= c0;
+                obin -= o0;
+
+//                if(o0 > n)
+//                    printf("Aa");
+
+
+                if( o0 < 0 )
+                    o0 += n;
+                if( o0 >= n )
+                    o0 -= n;
+
+
+
+                // histogram update using tri-linear interpolation
+                float v_r1 = mag*rbin, v_r0 = mag - v_r1;
+                float v_rc11 = v_r1*cbin, v_rc10 = v_r1 - v_rc11;
+                float v_rc01 = v_r0*cbin, v_rc00 = v_r0 - v_rc01;
+                float v_rco111 = v_rc11*obin, v_rco110 = v_rc11 - v_rco111;
+                float v_rco101 = v_rc10*obin, v_rco100 = v_rc10 - v_rco101;
+                float v_rco011 = v_rc01*obin, v_rco010 = v_rc01 - v_rco011;
+                float v_rco001 = v_rc00*obin, v_rco000 = v_rc00 - v_rco001;
+
+                int idx = ((r0+1)*(d+2) + c0+1)*(n+2) + o0;
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
+//                }
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,v_rco001,v_rco010,v_rco011,v_rco100,v_rco101);
+//                }
+                //idx = 50;
+                fillValue_128(hist1,idx,v_rco000,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+1,v_rco001,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(n+2),v_rco010,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(n+3),v_rco011,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+2)*(n+2),v_rco100,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+2)*(n+2)+1,v_rco101,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+3)*(n+2),v_rco110,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+3)*(n+2)+1,v_rco111,n+2,d+2,d,n);
+//                hist1[int((idx)/360*128)] += v_rco000;
+//                hist1[int((idx+1)/360*128)] += v_rco001;
+//                hist1[int((idx+(n+2))/360*128)] += v_rco010;
+//                hist1[int((idx+(n+3))/360*128)] += v_rco011;
+//                hist1[int((idx+(d+2)*(n+2))/360*128)] += v_rco100;
+//                hist1[int((idx+(d+2)*(n+2)+1)/360*128)] += v_rco101;
+//                hist1[int((idx+(d+3)*(n+2))/360*128)] += v_rco110;
+//                hist1[int((idx+(d+3)*(n+2)+1)/360*128)] += v_rco111;
+//                atomicAdd(hist1+int((idx+(d+3)*(n+2)+1)/360*128), v_rco111);
+//                atomicAdd(hist1+int((idx+(d+3)*(n+2))/360*128), v_rco110);
+//                atomicAdd(hist1+int((idx+(d+2)*(n+2)+1)/360*128), v_rco100);
+//                atomicAdd(hist1+int((idx+(n+3))/360*128), v_rco011);
+//                atomicAdd(hist1+int((idx+(n+2))/360*128), v_rco010);
+//                atomicAdd(hist1+int((idx+1)/360*128), v_rco001);
+//                atomicAdd(hist1+int((idx)/360*128), v_rco000);
+//                atomicAdd(hist1+int((idx+(d+3)*(n+2)+1)/360*128), v_rco111);
+                k++;
+            }
+        }
+
+    float *dst;
+    dst = hist1;
+    // copy histogram to the descriptor,
+    // apply hysteresis thresholding
+    // and scale the result, so that it can be easily converted
+    // to byte array
+    float nrm2 = 0;
+    len = d*d*n;
+    k = 0;
+    for( ; k < len; k++ )
+        nrm2 += dst[k]*dst[k];
+
+    float thr = sqrtf(nrm2)*SIFT_DESCR_MAG_THR;
+
+    i = 0, nrm2 = 0;
+
+    for( ; i < len; i++ )
+    {
+        float val = fminf(dst[i], thr);
+        dst[i] = val;
+        nrm2 += val*val;
+    }
+    //__syncthreads();
+    nrm2 = SIFT_INT_DESCR_FCTR/fmaxf(sqrtf(nrm2), FLT_EPSILON);
+    k = 0;
+    for( ; k < len; k++ )
+    {
+        //dst[k] = (uchar)(dst[k]*nrm2);
+        d_decriptor[pointIndex*len + k] = (uchar)(dst[k]*nrm2);
+//        if(x == 21 && y ==257 ){
+//            printf("k: %d,%f \n",k,d_decriptor[pointIndex*len + k]);
+//        }
+    }
+}
+__global__ void calcSIFTDescriptor_gpu_shared_(float *d_point,int p_pitch,float* d_decriptor,int pointsNum,int  nOctaveLayers)
+{
+    //float* currptr,int x,int y,float scl_octv,int pitch,int width,int height,float ori,float* d_decriptor,int index
+
+    //description array
+    //calcSIFTDescriptor(img, ptf, angle, size*0.5f, d, n, descriptors.ptr<float>((int)i));
+    //x,y,360-angle,scl,d,n
+    //static const int d = SIFT_DESCR_WIDTH, n = SIFT_DESCR_HIST_BINS;
+    //x y is the x y in prymid image
+    //scl_octv is the related scale in octave
+    //x,y,scl_octv has been calculated above
+    /******************calcDescriptor*****************/
+    int pointIndex = blockIdx.x*blockDim.x+threadIdx.x;
+    if(pointIndex>=pointsNum)
+        return;
+
+    float size =d_point[pointIndex+p_pitch*3];
+    float ori = d_point[pointIndex+p_pitch*5];
+
+
+    int x,y,o,layer;
+    unpackOctave(d_point[pointIndex],
+            d_point[pointIndex+p_pitch*1],
+            d_point[pointIndex+p_pitch*2],
+            x,y,o,layer);
+
+    float scl_octv = size/((1 << o)*2);
+
+    int width = d_oIndex[o*3];
+    int height = d_oIndex[o*3+1];
+    int pitch = d_oIndex[o*3+2];
+
+    float *currptr = pgpyr[o*(nOctaveLayers+3) + layer]+y*pitch+x;
+
+    int d = SIFT_DESCR_WIDTH,n = SIFT_DESCR_HIST_BINS;
+    ori = 360.f - ori;
+    if(std::abs(ori - 360.f) < FLT_EPSILON)
+        ori = 0.f;
+
+    //printf(" %d,%d,%f,%f,%f ",x,y,*currptr,ori,scl_octv);
+    //printf(" %d,%d,%f ",x,y,*(pgpyr[o*(nOctaveLayers+3) + layer]+1));
+
+    float cos_t = cosf(ori*(float)(CV_PI/180));
+    float sin_t = sinf(ori*(float)(CV_PI/180));
+
+    //n=8
+    float bins_per_rad = n / 360.f;
+    float exp_scale = -1.f/(d * d * 0.5f);
+    //3*scale,normalized 3*scale to 1
+    float hist_width = SIFT_DESCR_SCL_FCTR * scl_octv;
+    int radius = int(hist_width * 1.4142135623730951f * (d + 1) * 0.5f+0.5);
+    // Clip the radius to the diagonal of the image to avoid autobuffer too large exception
+    radius = fminf(radius, (int) sqrtf(((double) width)*width + ((double) height)*height));
+    cos_t /= hist_width;
+    sin_t /= hist_width;
+    //len 为特征点邻域区域内像素的数量，histlen 为直方图的数量，即特征矢量的长度，实际应为d×d×n，之所以每个变量
+    //又加上了2，是因为要为圆周循环留出一定的内存空间
+    int i, j, k, len = (radius*2+1)*(radius*2+1);
+    //__shared__ float dst1[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS*BLOCK_SIZE_ONE_DIM];
+    //float dst[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS];
+    int rows = height, cols = width;
+
+    const int histlen1 = (SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS);
+    __shared__ float hist[(SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS)*BLOCK_SIZE_ONE_DIM];
+    float* hist1 = hist+threadIdx.x*d*d*n;
+    //float4 layer0[32];
+
+    //init *hist = {0},because following code will use '+='
+    for( i = 0; i < d; i++ )
+    {
+        for( j = 0; j < d; j++ )
+            for( k = 0; k < n; k++ )
+                hist1[(i*(d) + j)*(n) + k] = 0.;
+    }
+
+    //traverse the boundary rectangle
+    //calculate two improtant data
+    //1.all dx,dy,w,ori,mag in image coordinary
+    //2.all x,y in bins coordinary(a related coordinary)
+
+    for( i = -radius, k = 0; i <= radius; i++ )
+        for( j = -radius; j <= radius; j++ )
+        {
+            // Calculate sample's histogram array coords rotated relative to ori.
+            // Subtract 0.5 so samples that fall e.g. in the center of row 1 (i.e.
+            // r_rot = 1.5) have full weight placed in row 1 after interpolation.
+
+            float c_rot = j * cos_t - i * sin_t;
+            float r_rot = j * sin_t + i * cos_t;
+            float rbin = r_rot + d/2 - 0.5f;
+            float cbin = c_rot + d/2 - 0.5f;
+            int r = y + i, c = x + j;
+
+            //d = 4
+            if( rbin > -1 && rbin < d && cbin > -1 && cbin < d &&
+                r > 0 && r < rows - 1 && c > 0 && c < cols - 1 )
+            {
+
+                float dx = (float)(currptr[i*pitch+j+1] - currptr[i*pitch+j-1]);
+                //the positive direction is from bottom to top contrary to the image /
+                //from top to bottom.So dy = y-1 - (y+1).
+                float dy = (float)(currptr[(i-1)*pitch+j] - currptr[(i+1)*pitch+j]);
+                // float dx = (float)(img.at<sift_wt>(r, c+1) - img.at<sift_wt>(r, c-1));
+                // float dy = (float)(img.at<sift_wt>(r-1, c) - img.at<sift_wt>(r+1, c));
+                //X[k] = dx; Y[k] = dy; RBin[k] = rbin; CBin[k] = cbin;
+               // W[k] = (c_rot * c_rot + r_rot * r_rot)*exp_scale;
+
+                float wk,ok,mk;
+                wk = __expf((c_rot * c_rot + r_rot * r_rot)*exp_scale);
+                ok = atan2(dy,dx);
+                //ok = cv::cudev::atan2();
+                ok = (ok*180/CV_PI);
+                ok = ok<0? ok+360:ok;
+                mk = sqrtf(dy*dy+dx*dx);
+
+                //float rbin = RBin[k], cbin = CBin[k];
+                float obin = (ok - ori)*bins_per_rad;
+                float mag = mk*wk;
+
+
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
+//                }
+
+
+                int r0 =  floor(rbin);
+                int c0 =  floor(cbin);
+                int o0 =  floor(obin);
+
+                rbin -= r0;
+                cbin -= c0;
+                obin -= o0;
+
+//                if(o0 > n)
+//                    printf("Aa");
+
+
+                if( o0 < 0 )
+                    o0 += n;
+                if( o0 >= n )
+                    o0 -= n;
+
+
+
+                // histogram update using tri-linear interpolation
+                float v_r1 = mag*rbin, v_r0 = mag - v_r1;
+                float v_rc11 = v_r1*cbin, v_rc10 = v_r1 - v_rc11;
+                float v_rc01 = v_r0*cbin, v_rc00 = v_r0 - v_rc01;
+                float v_rco111 = v_rc11*obin, v_rco110 = v_rc11 - v_rco111;
+                float v_rco101 = v_rc10*obin, v_rco100 = v_rc10 - v_rco101;
+                float v_rco011 = v_rc01*obin, v_rco010 = v_rc01 - v_rco011;
+                float v_rco001 = v_rc00*obin, v_rco000 = v_rc00 - v_rco001;
+
+                int idx = ((r0+1)*(d+2) + c0+1)*(n+2) + o0;
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
+//                }
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,v_rco001,v_rco010,v_rco011,v_rco100,v_rco101);
+//                }
+                //idx = 50;
+                fillValue_128(hist1,idx,v_rco000,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+1,v_rco001,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(n+2),v_rco010,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(n+3),v_rco011,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+2)*(n+2),v_rco100,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+2)*(n+2)+1,v_rco101,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+3)*(n+2),v_rco110,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+3)*(n+2)+1,v_rco111,n+2,d+2,d,n);
+
+//                int idx1 = judgeValue(idx,n+2,d+2,d,n);
+//                if(idx1>0)
+//                    atomicAdd(hist1+idx1, v_rco000);
+//                idx1 = judgeValue(idx+1,n+2,d+2,d,n);
+//                if(idx1>0)
+//                    atomicAdd(hist1+idx1, v_rco001);
+//                idx1 = judgeValue(idx+(n+2)+(n+3),n+2,d+2,d,n);
+//                if(idx1>0)
+//                     atomicAdd(hist1+idx1, v_rco010);
+//                idx1 = judgeValue(idx+(n+3),n+2,d+2,d,n);
+//                if(idx1>0)
+//                    atomicAdd(hist1+idx1, v_rco100);
+//                idx1 = judgeValue(idx+(d+2)*(n+2),n+2,d+2,d,n);
+//                if(idx1>0)
+//                    atomicAdd(hist1+idx1, v_rco101);
+//                idx1 = judgeValue(idx+(d+2)*(n+2)+1,n+2,d+2,d,n);
+//                if(idx1>0)
+//                    atomicAdd(hist1+idx1, v_rco110);
+//                idx1 = judgeValue(idx+(d+3)*(n+2),n+2,d+2,d,n);
+//                if(idx1>0)
+//                    atomicAdd(hist1+idx1, v_rco111);
+
+
+
+
+//                hist1[int((idx)/360*128)] += v_rco000;
+//                hist1[int((idx+1)/360*128)] += v_rco001;
+//                hist1[int((idx+(n+2))/360*128)] += v_rco010;
+//                hist1[int((idx+(n+3))/360*128)] += v_rco011;
+//                hist1[int((idx+(d+2)*(n+2))/360*128)] += v_rco100;
+//                hist1[int((idx+(d+2)*(n+2)+1)/360*128)] += v_rco101;
+//                hist1[int((idx+(d+3)*(n+2))/360*128)] += v_rco110;
+//                hist1[int((idx+(d+3)*(n+2)+1)/360*128)] += v_rco111;
+//                atomicAdd(hist1+int((idx+(d+3)*(n+2)+1)/360*128), v_rco111);
+//                atomicAdd(hist1+int((idx+(d+3)*(n+2))/360*128), v_rco110);
+//                atomicAdd(hist1+int((idx+(d+2)*(n+2)+1)/360*128), v_rco100);
+//                atomicAdd(hist1+int((idx+(n+3))/360*128), v_rco011);
+//                atomicAdd(hist1+int((idx+(n+2))/360*128), v_rco010);
+//                atomicAdd(hist1+int((idx+1)/360*128), v_rco001);
+//                atomicAdd(hist1+int((idx)/360*128), v_rco000);
+//                atomicAdd(hist1+int((idx+(d+3)*(n+2)+1)/360*128), v_rco111);
+                k++;
+            }
+        }
+
+    float *dst;
+    dst = hist1;
+    // copy histogram to the descriptor,
+    // apply hysteresis thresholding
+    // and scale the result, so that it can be easily converted
+    // to byte array
+    float nrm2 = 0;
+    len = d*d*n;
+    k = 0;
+    for( ; k < len; k++ )
+        nrm2 += dst[k]*dst[k];
+
+    float thr = sqrtf(nrm2)*SIFT_DESCR_MAG_THR;
+
+    i = 0, nrm2 = 0;
+
+    for( ; i < len; i++ )
+    {
+        float val = fminf(dst[i], thr);
+        dst[i] = val;
+        nrm2 += val*val;
+    }
+    //__syncthreads();
+    nrm2 = SIFT_INT_DESCR_FCTR/fmaxf(sqrtf(nrm2), FLT_EPSILON);
+    k = 0;
+    for( ; k < len; k++ )
+    {
+        //dst[k] = (uchar)(dst[k]*nrm2);
+        d_decriptor[pointIndex*len + k] = (uchar)(dst[k]*nrm2);
+//        if(x == 21 && y ==257 ){
+//            printf("k: %d,%f \n",k,d_decriptor[pointIndex*len + k]);
+//        }
+    }
+}
+
+__global__ void calcSIFTDescriptor_gpu__local__(float *d_point,int p_pitch,float* d_decriptor,int pointsNum,int  nOctaveLayers)
+{
+    //float* currptr,int x,int y,float scl_octv,int pitch,int width,int height,float ori,float* d_decriptor,int index
+
+    //description array
+    //calcSIFTDescriptor(img, ptf, angle, size*0.5f, d, n, descriptors.ptr<float>((int)i));
+    //x,y,360-angle,scl,d,n
+    //static const int d = SIFT_DESCR_WIDTH, n = SIFT_DESCR_HIST_BINS;
+    //x y is the x y in prymid image
+    //scl_octv is the related scale in octave
+    //x,y,scl_octv has been calculated above
+    /******************calcDescriptor*****************/
+    int pointIndex = blockIdx.x*blockDim.x+threadIdx.x;
+    if(pointIndex>=pointsNum)
+        return;
+
+    float size =d_point[pointIndex+p_pitch*3];
+    float ori = d_point[pointIndex+p_pitch*5];
+
+
+    int x,y,o,layer;
+    unpackOctave(d_point[pointIndex],
+            d_point[pointIndex+p_pitch*1],
+            d_point[pointIndex+p_pitch*2],
+            x,y,o,layer);
+
+    float scl_octv = size/((1 << o)*2);
+
+    int width = d_oIndex[o*3];
+    int height = d_oIndex[o*3+1];
+    int pitch = d_oIndex[o*3+2];
+
+    float *currptr = pgpyr[o*(nOctaveLayers+3) + layer]+y*pitch+x;
+
+    int d = SIFT_DESCR_WIDTH,n = SIFT_DESCR_HIST_BINS;
+    ori = 360.f - ori;
+    if(std::abs(ori - 360.f) < FLT_EPSILON)
+        ori = 0.f;
+
+    //printf(" %d,%d,%f,%f,%f ",x,y,*currptr,ori,scl_octv);
+    //printf(" %d,%d,%f ",x,y,*(pgpyr[o*(nOctaveLayers+3) + layer]+1));
+
+    float cos_t = cosf(ori*(float)(CV_PI/180));
+    float sin_t = sinf(ori*(float)(CV_PI/180));
+
+    //n=8
+    float bins_per_rad = n / 360.f;
+    float exp_scale = -1.f/(d * d * 0.5f);
+    //3*scale,normalized 3*scale to 1
+    float hist_width = SIFT_DESCR_SCL_FCTR * scl_octv;
+    int radius = int(hist_width * 1.4142135623730951f * (d + 1) * 0.5f+0.5);
+    // Clip the radius to the diagonal of the image to avoid autobuffer too large exception
+    radius = fminf(radius, (int) sqrtf(((double) width)*width + ((double) height)*height));
+    cos_t /= hist_width;
+    sin_t /= hist_width;
+    //len 为特征点邻域区域内像素的数量，histlen 为直方图的数量，即特征矢量的长度，实际应为d×d×n，之所以每个变量
+    //又加上了2，是因为要为圆周循环留出一定的内存空间
+    int i, j, k, len = (radius*2+1)*(radius*2+1);
+    //float dst[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS];
+    int rows = height, cols = width;
+//    __shared__ float dst1[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS*BLOCK_SIZE_ONE_DIM];
+
+//    for(int i = 0;i < 128 ; i++)
+//    {
+//        float* dst = dst1+threadIdx.x*d*d*n;
+//        dst[i] = 0;
+//    }
+//    __syncthreads();
+//    const int histlen1 = (SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS);
+//    __shared__ float hist[(SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS)*BLOCK_SIZE_ONE_DIM];
+//    float* hist1 = hist+threadIdx.x*d*d*n;
+
+    float hist1[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS];
+
+
+    //init *hist = {0},because following code will use '+='
+    for( i = 0; i < d; i++ )
+    {
+        for( j = 0; j < d; j++ )
+            for( k = 0; k < n; k++ )
+                hist1[(i*(d) + j)*(n) + k] = 0.;
+    }
+
+    //traverse the boundary rectangle
+    //calculate two improtant data
+    //1.all dx,dy,w,ori,mag in image coordinary
+    //2.all x,y in bins coordinary(a related coordinary)
+    for( i = -radius, k = 0; i <= radius; i++ )
+        for( j = -radius; j <= radius; j++ )
+        {
+            // Calculate sample's histogram array coords rotated relative to ori.
+            // Subtract 0.5 so samples that fall e.g. in the center of row 1 (i.e.
+            // r_rot = 1.5) have full weight placed in row 1 after interpolation.
+
+            float c_rot = j * cos_t - i * sin_t;
+            float r_rot = j * sin_t + i * cos_t;
+            float rbin = r_rot + d/2 - 0.5f;
+            float cbin = c_rot + d/2 - 0.5f;
+            int r = y + i, c = x + j;
+
+            //d = 4
+            if( rbin > -1 && rbin < d && cbin > -1 && cbin < d &&
+                r > 0 && r < rows - 1 && c > 0 && c < cols - 1 )
+            {
+
+                float dx = (float)(currptr[i*pitch+j+1] - currptr[i*pitch+j-1]);
+                //the positive direction is from bottom to top contrary to the image /
+                //from top to bottom.So dy = y-1 - (y+1).
+                float dy = (float)(currptr[(i-1)*pitch+j] - currptr[(i+1)*pitch+j]);
+                // float dx = (float)(img.at<sift_wt>(r, c+1) - img.at<sift_wt>(r, c-1));
+                // float dy = (float)(img.at<sift_wt>(r-1, c) - img.at<sift_wt>(r+1, c));
+                //X[k] = dx; Y[k] = dy; RBin[k] = rbin; CBin[k] = cbin;
+               // W[k] = (c_rot * c_rot + r_rot * r_rot)*exp_scale;
+
+                float wk,ok,mk;
+                wk = __expf((c_rot * c_rot + r_rot * r_rot)*exp_scale);
+                ok = atan2(dy,dx);
+                //ok = cv::cudev::atan2();
+                ok = (ok*180/CV_PI);
+                ok = ok<0? ok+360:ok;
+                mk = sqrtf(dy*dy+dx*dx);
+
+                //float rbin = RBin[k], cbin = CBin[k];
+                float obin = (ok - ori)*bins_per_rad;
+                float mag = mk*wk;
+
+
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
+//                }
+
+
+                int r0 =  floor(rbin);
+                int c0 =  floor(cbin);
+                int o0 =  floor(obin);
+
+                rbin -= r0;
+                cbin -= c0;
+                obin -= o0;
+
+//                if(o0 > n)
+//                    printf("Aa");
+
+
+                if( o0 < 0 )
+                    o0 += n;
+                if( o0 >= n )
+                    o0 -= n;
+
+
+
+                // histogram update using tri-linear interpolation
+                float v_r1 = mag*rbin, v_r0 = mag - v_r1;
+                float v_rc11 = v_r1*cbin, v_rc10 = v_r1 - v_rc11;
+                float v_rc01 = v_r0*cbin, v_rc00 = v_r0 - v_rc01;
+                float v_rco111 = v_rc11*obin, v_rco110 = v_rc11 - v_rco111;
+                float v_rco101 = v_rc10*obin, v_rco100 = v_rc10 - v_rco101;
+                float v_rco011 = v_rc01*obin, v_rco010 = v_rc01 - v_rco011;
+                float v_rco001 = v_rc00*obin, v_rco000 = v_rc00 - v_rco001;
+
+                int idx = ((r0+1)*(d+2) + c0+1)*(n+2) + o0;
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,rbin,cbin,obin,mag,ok);
+//                }
+
+//                if(x == 440*2 && y ==322*2 ){
+//                    printf("k: %d,rbin: %f cbin: %f obin: %f mag: %f ok: %f\n",k,v_rco001,v_rco010,v_rco011,v_rco100,v_rco101);
+//                }
+                //idx = 50;
+                fillValue_128(hist1,idx,v_rco000,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+1,v_rco001,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(n+2),v_rco010,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(n+3),v_rco011,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+2)*(n+2),v_rco100,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+2)*(n+2)+1,v_rco101,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+3)*(n+2),v_rco110,n+2,d+2,d,n);
+                fillValue_128(hist1,idx+(d+3)*(n+2)+1,v_rco111,n+2,d+2,d,n);
+//                if(idx+(d+1)*(n)+1>127)
+//                    continue;
+//                hist1[idx] += v_rco000;
+//                hist1[idx+1] += v_rco001;
+//                hist1[idx+(n)] += v_rco010;
+//                hist1[idx+(n+1)] += v_rco011;
+//                hist1[idx+(d)*(n)] += v_rco100;
+//                hist1[idx+(d)*(n)+1] += v_rco101;
+//                hist1[idx+(d+1)*(n)] += v_rco110;
+//                hist1[idx+(d+1)*(n)+1] += v_rco111;
+//                k++;
+            }
+        }
+
+    float *dst;
+    dst = hist1;
+    // copy histogram to the descriptor,
+    // apply hysteresis thresholding
+    // and scale the result, so that it can be easily converted
+    // to byte array
+    float nrm2 = 0;
+    len = d*d*n;
+    k = 0;
+    for( ; k < len; k++ )
+        nrm2 += dst[k]*dst[k];
+
+    float thr = sqrtf(nrm2)*SIFT_DESCR_MAG_THR;
+
+    i = 0, nrm2 = 0;
+
+    for( ; i < len; i++ )
+    {
+        float val = fminf(dst[i], thr);
+        dst[i] = val;
+        nrm2 += val*val;
+    }
+    //__syncthreads();
     nrm2 = SIFT_INT_DESCR_FCTR/fmaxf(sqrtf(nrm2), FLT_EPSILON);
     k = 0;
     for( ; k < len; k++ )

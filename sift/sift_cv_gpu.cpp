@@ -1400,13 +1400,14 @@ void SIFT_Impl::detectAndCompute(InputArray _image, InputArray _mask,
 #else
     int nOctaves = actualNOctaves > 0 ? actualNOctaves : cvRound(std::log( (double)std::min( base.cols, base.rows ) ) / std::log(2.) - 2) - firstOctave;
 #endif
-    //double t, tf = getTickFrequency();
-    //t = (double)getTickCount();
+    double t, tf = getTickFrequency();
+    t = (double)getTickCount();
     buildGaussianPyramid(base, gpyr, nOctaves);
+    t = (double)getTickCount() - t;
+    printf("pyramid construction time: %g\n", t*1000./tf);
+
     buildDoGPyramid(gpyr, dogpyr);
 
-    //t = (double)getTickCount() - t;
-    //printf("pyramid construction time: %g\n", t*1000./tf);
 
     if( !useProvidedKeypoints )
     {

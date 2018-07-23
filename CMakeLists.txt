@@ -77,5 +77,8 @@ if (BUILD_TEST)
   add_executable(test_cv_descriptor test_cv_descriptor.cpp)
   target_link_libraries(test_cv_descriptor ${LABRARY})
 
+  add_executable(test_cv_homography test_cv_homography.cpp)
+  target_link_libraries(test_cv_homography ${LABRARY})
+
 endif (BUILD_TEST)
 
