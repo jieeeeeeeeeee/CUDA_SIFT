@@ -65,6 +65,7 @@
 #include <opencv2/cudafilters.hpp>
 #include <cuda.h>
 #include <cuda/cuSIFT.h>
+#include "SiftGPU.h"
 
 #include "opencv2/highgui.hpp"
 #include "opencv2/calib3d.hpp"
@@ -80,8 +81,10 @@ static void help()
 
 //#define USE_CUDA_SURF
 //#define USE_CUDA_ORB
-#define USE_SIFT
-//#define CV_CDUA_SIFT
+//#define USE_SIFT
+#define CV_CDUA_SIFT
+//#define USE_SIFT_GPU
+
 
 int main(int argc, char* argv[])
 {
@@ -91,7 +94,7 @@ int main(int argc, char* argv[])
     GpuMat keypoints1GPU, keypoints2GPU;
     GpuMat descriptors1GPU, descriptors2GPU;
     vector<KeyPoint> keypoints1, keypoints2;
-    vector<float> descriptors1, descriptors2;
+
 
     char * p1 = "/home/jie/workspace/projects/CUDA_SIfT/Qt_cuda_sift/data/100_7101.JPG";
     char * p2 = "/home/jie/workspace/projects/CUDA_SIfT/Qt_cuda_sift/data/100_7102.JPG";
@@ -174,7 +177,12 @@ int main(int argc, char* argv[])
 
     cout << "FOUND " << keypoints1.size() << " keypoints on first image" << endl;
     cout << "FOUND " << keypoints2.size() << " keypoints on second image" << endl;
-
+//    Rect roi(0,0,128,128);
+//    Mat show = descriptors_object(roi);
+//    Mat ss;
+//    show.convertTo(ss, DataType<uchar>::type, 1, 0);
+//    cv::imshow("ASd",ss);
+//    cv::waitKey();
     BFMatcher matcher;
     std::vector< DMatch > matches;
     matcher.match( descriptors_object, descriptors_scene, matches );
@@ -203,6 +211,102 @@ int main(int argc, char* argv[])
 
 #endif
 
+#ifdef USE_SIFT_GPU
+    //////////////////////
+    /// SIFT_GPU
+    /////////////////////
+    SiftGPU sift;
+    char * argv1[] = {"-fo", "0",  "-v", "0","-maxd","20000"};//
+    int argc1 = sizeof(argv1)/sizeof(char*);
+    sift.ParseParam(argc1, argv1);
+    if(sift.CreateContextGL() != SiftGPU::SIFTGPU_FULL_SUPPORTED)
+    {
+        std::cout<<"siftgpu not support !"<<std::endl;
+        return 0;
+    }
+    int width,height;
+    Mat img_object1 = imread(p1);
+    Mat img_scene1  = imread(p2);
+    Mat img_object,img_scene;
+
+    vector<float> descriptors1, descriptors2;
+    cv::cvtColor(img_object1, img_object, COLOR_BGR2GRAY);
+    cv::cvtColor(img_scene1, img_scene, COLOR_BGR2GRAY);
+    width = img_object.cols;
+    height = img_object.rows;
+    int num1;
+    if(sift.RunSIFT(width,height,img_object.data,0x1909, 0x1401))
+    {
+        vector<SiftGPU::SiftKeypoint> keys1(1);
+        //get feature count
+        num1 = sift.GetFeatureNum();
+
+        //allocate memory
+        keys1.resize(num1);    descriptors1.resize(128*num1);
+
+        //reading back feature vectors is faster than writing files
+        //if you dont need keys or descriptors, just put NULLs here
+        sift.GetFeatureVector(&keys1[0], &descriptors1[0]);
+        //this can be used to write your own sift file.
+        for(int i = 0;i<keys1.size();i++)
+        {
+            KeyPoint kpt;
+            kpt.pt.x =keys1[i].x;
+            kpt.pt.y = keys1[i].y;
+            kpt.octave = keys1[i].o;
+            kpt.size = keys1[i].s;
+            keypoints1.push_back(kpt);
+        }
+    }
+    Mat descriptors_object(num1,128,CV_32FC1,&descriptors1[0]);
+//        Rect roi(0,0,128,128);
+//        Mat show = descriptors_object(roi);
+//        Mat ss;
+//        show.convertTo(ss, DataType<uchar>::type, 1, 0);
+//        cv::imshow("ASd",ss);
+//        cv::waitKey();
+
+    width = img_scene.cols;
+    height = img_scene.rows;
+    if(sift.RunSIFT(width,height,img_scene.data,0x1909, 0x1401))
+    {
+        vector<SiftGPU::SiftKeypoint> keys1(1);
+        //get feature count
+        num1 = sift.GetFeatureNum();
+
+        //allocate memory
+        keys1.resize(num1);    descriptors2.resize(128*num1);
+
+        //reading back feature vectors is faster than writing files
+        //if you dont need keys or descriptors, just put NULLs here
+        sift.GetFeatureVector(&keys1[0], &descriptors2[0]);
+        //this can be used to write your own sift file.
+        for(int i = 0;i<keys1.size();i++)
+        {
+            KeyPoint kpt;
+            kpt.pt.x =keys1[i].x;
+            kpt.pt.y = keys1[i].y;
+            kpt.octave = keys1[i].o;
+            kpt.size = keys1[i].s;
+            keypoints2.push_back(kpt);
+        }
+    }
+    Mat descriptors_scene(num1,128,CV_32FC1,&descriptors2[0]);;
+
+    cout << "FOUND " << keypoints1.size() << " keypoints on first image" << endl;
+    cout << "FOUND " << keypoints2.size() << " keypoints on second image" << endl;
+
+    Mat ss,ss1;
+    descriptors_object.convertTo(ss, DataType<float>::type, 256, 0);
+    descriptors_scene.convertTo(ss1, DataType<float>::type, 256, 0);
+
+    FlannBasedMatcher matcher;
+    //BFMatcher matcher;
+    std::vector< DMatch > matches;
+    matcher.match( ss, ss1, matches );
+
+#endif
+
 
     //-- Quick calculation of max and min distances between keypoints
     double max_dist = 0; double min_dist = 100;
@@ -214,14 +318,14 @@ int main(int argc, char* argv[])
     printf("-- Max dist : %f \n", max_dist );
     printf("-- Min dist : %f \n", min_dist );
     //-- Draw only "good" matches (i.e. whose distance is less than 3*min_dist )
-    std::vector< DMatch >& good_matches = matches;
-//    for( int i = 0; i < matches.size(); i++ )
-//    { if( matches[i].distance <= 3*min_dist )
-//       { good_matches.push_back( matches[i]); }
-//    }
-//    std::cout<<"good_matches num:"<<good_matches.size()
-//            <<" <= 3*min_dist "<<std::endl<<
-//              "good matches rate:"<<(float)good_matches.size()/matches.size();
+    std::vector< DMatch > good_matches;
+    for( int i = 0; i < matches.size(); i++ )
+    { if( matches[i].distance <= 3*min_dist )
+       { good_matches.push_back( matches[i]); }
+    }
+    std::cout<<"good_matches num:"<<good_matches.size()
+            <<" <= 3*min_dist "<<std::endl<<
+              "good matches rate:"<<(float)good_matches.size()/matches.size();
 
 
     // drawing the results

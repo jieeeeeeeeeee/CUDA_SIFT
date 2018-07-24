@@ -28,6 +28,7 @@ include_directories(${CUDA_INCLUDE_DIRS})
 
 add_subdirectory(sift)
 add_subdirectory(cuda)
+add_subdirectory(SiftGPU)
 
 #SET(CMAKE_BUILD_TYPE "Debug")
 #SET(CMAKE_CXX_FLAGS "-pg")
@@ -78,7 +79,7 @@ if (BUILD_TEST)
   target_link_libraries(test_cv_descriptor ${LABRARY})
 
   add_executable(test_cv_homography test_cv_homography.cpp)
-  target_link_libraries(test_cv_homography ${LABRARY})
+  target_link_libraries(test_cv_homography ${LABRARY} siftgpu)
 
 endif (BUILD_TEST)
 

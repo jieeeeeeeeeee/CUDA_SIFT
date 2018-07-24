@@ -346,32 +346,31 @@ int main()
     cv::cuda::SIFT_CUDA sift;
     sift(src_gpu,cv::cuda::GpuMat(),keypointsGPU,descriptsGPU);
 
-
-
-
-    Mat keypointsCPU(keypointsGPU);
-    float* h_keypoints = (float*)keypointsCPU.ptr();
     std::vector<cv::KeyPoint>keypointss;
-    keypointss.resize(28000);
-    for(int i = 0;i<keypointss.size();++i)
-    {
-        keypointss[i].pt.x =  h_keypoints[i];
-        keypointss[i].pt.y =  h_keypoints[i+keypointsCPU.step1()*1];
-        keypointss[i].octave =  h_keypoints[i+keypointsCPU.step1()*2];
-        keypointss[i].size =  h_keypoints[i+keypointsCPU.step1()*3];
-        keypointss[i].response =  h_keypoints[i+keypointsCPU.step1()*4];
-        keypointss[i].angle =  h_keypoints[i+keypointsCPU.step1()*5];
-    }
-    int firstOctave = -1;
-    if( firstOctave < 0 )
-        for( size_t i = 0; i < keypointss.size(); i++ )
-        {
-            KeyPoint& kpt = keypointss[i];
-            float scale = 1.f/(float)(1 << -firstOctave);
-            kpt.octave = (kpt.octave & ~255) | ((kpt.octave + firstOctave) & 255);
-            kpt.pt *= scale;
-            kpt.size *= scale;
-        }
+    sift.downloadKeypoints(keypointsGPU, keypointss);
+//    Mat keypointsCPU(keypointsGPU);
+//    float* h_keypoints = (float*)keypointsCPU.ptr();
+
+//    keypointss.resize(28000);
+//    for(int i = 0;i<keypointss.size();++i)
+//    {
+//        keypointss[i].pt.x =  h_keypoints[i];
+//        keypointss[i].pt.y =  h_keypoints[i+keypointsCPU.step1()*1];
+//        keypointss[i].octave =  h_keypoints[i+keypointsCPU.step1()*2];
+//        keypointss[i].size =  h_keypoints[i+keypointsCPU.step1()*3];
+//        keypointss[i].response =  h_keypoints[i+keypointsCPU.step1()*4];
+//        keypointss[i].angle =  h_keypoints[i+keypointsCPU.step1()*5];
+//    }
+//    int firstOctave = -1;
+//    if( firstOctave < 0 )
+//        for( size_t i = 0; i < keypointss.size(); i++ )
+//        {
+//            KeyPoint& kpt = keypointss[i];
+//            float scale = 1.f/(float)(1 << -firstOctave);
+//            kpt.octave = (kpt.octave & ~255) | ((kpt.octave + firstOctave) & 255);
+//            kpt.pt *= scale;
+//            kpt.size *= scale;
+//        }
 
 #ifdef TIME
     t = (double)getTickCount() - t;
@@ -419,6 +418,7 @@ int main()
     Mat descriptors_1, descriptors_2;
     f2d->compute(img_1, keypoints_1, descriptors_1);
 
+    std::cout<<"origin sift keypoints num :"<<keypoints_1.size()<<std::endl;
 #ifdef TIME
     t = (double)getTickCount() - t;
     printf("opencv sift cost : %g ms\n", t*1000./tf);//158

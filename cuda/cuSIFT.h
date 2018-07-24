@@ -105,7 +105,8 @@ public:
     //! the default constructor
     //SIFT_CUDA();
     //! the full constructor taking all the necessary parameters
-    SIFT_CUDA(int _nOctaveLayers = 3,
+    SIFT_CUDA(bool upsample = true,
+                   int _nOctaveLayers = 3,
                    float _contrastThreshold = 0.04, float _edgeThreshold = 10,
                    float _sigma = 1.6, float _keypointsRatio=0.01);
 
@@ -155,6 +156,7 @@ public:
 
     int nfeatures;
     int nOctaveLayers;
+    bool upsample;
     double contrastThreshold;
     double edgeThreshold;
     double sigma;
