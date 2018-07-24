@@ -280,18 +280,7 @@ void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpy
 
 
 
-    //alloc for d_decriptor
-    int despriptorSize = SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS;
-    ensureSizeIsEnough(featureNum, despriptorSize, CV_32F, descriptorsGpu);
-    //float* d_descriptor;
 
-    //cudaMalloc(&d_descriptor,sizeof(float)*featureNum*despriptorSize);
-
-
-    grid =iDivUp(featureNum,BLOCK_SIZE_ONE_DIM);
-    calcSIFTDescriptor_gpu<<<grid,BLOCK_SIZE_ONE_DIM>>>((float*)keypoints.ptr(),keypoints.step1(),(float*)descriptorsGpu.ptr(),featureNum,nOctaveLayers);
-    CV_CUDEV_SAFE_CALL( cudaGetLastError() );
-    CV_CUDEV_SAFE_CALL( cudaDeviceSynchronize() );
 
     //Mat descriptors;
     //descriptors.create(featureNum,128,CV_32FC1);
@@ -343,6 +332,22 @@ void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpy
 //    imshow("new descriptors", ss);
 
 
+}
+void calcDescriptors(GpuMat& keypoints,GpuMat& descriptorsGpu,int nOctaveLayers)
+{
+    //alloc for d_decriptor
+    int featureNum = keypoints.cols;
+    int despriptorSize = SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS;
+    ensureSizeIsEnough(featureNum, despriptorSize, CV_32F, descriptorsGpu);
+    //float* d_descriptor;
+
+    //cudaMalloc(&d_descriptor,sizeof(float)*featureNum*despriptorSize);
+
+
+    int grid =iDivUp(featureNum,Descript_BLOCK_SIZE);
+    calcSIFTDescriptor_gpu<<<grid,Descript_BLOCK_SIZE>>>((float*)keypoints.ptr(),keypoints.step1(),(float*)descriptorsGpu.ptr(),featureNum,nOctaveLayers);
+    CV_CUDEV_SAFE_CALL( cudaGetLastError() );
+    CV_CUDEV_SAFE_CALL( cudaDeviceSynchronize() );
 }
 
 
@@ -427,7 +432,7 @@ public:
         //t = (double)getTickCount();
         buildGaussianPyramid(base, gpyr, nOctaves,sift.nOctaveLayers,sift.sigma);
         //t = (double)getTickCount() - t;
-        printf("pyramid construction time: %g\n", t*1000./tf);
+        //printf("pyramid construction time: %g\n", t*1000./tf);
         buildDoGPyramid(gpyr, dogpyr,sift.nOctaveLayers);
         if( !useProvidedKeypoints )
         {
@@ -459,7 +464,7 @@ public:
 //            // filter keypoints by mask
 //            //KeyPointsFilter::runByPixelsMask( keypoints, mask );
 //        }
-
+        }
 //        if( _descriptors.needed() )
 //        {
 //            //t = (double)getTickCount();
@@ -470,8 +475,10 @@ public:
 //            calcDescriptors(gpyr, keypoints, descriptors, nOctaveLayers, firstOctave);
 //            //t = (double)getTickCount() - t;
 //            //printf("descriptor extraction time: %g\n", t*1000./tf);
-        }
+//        }
+        calcDescriptors(keypoints,descriptors,sift.nOctaveLayers);
     }
+
 
 private:
     cv::cuda::SIFT_CUDA& sift;
@@ -525,7 +532,7 @@ namespace cuda {
             //if (!useProvidedKeypoints)
                 //sift.detectKeypoints(keypoints);
 
-            //sift.computeDescriptors(keypoints, descriptors, descriptorSize());
+            //sift.computeDescriptors(keypoints, descriptors);
         }
 
 

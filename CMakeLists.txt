@@ -17,18 +17,22 @@ find_package(Qt5Core)
 #find OpenCV
 #which is release version
 set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build)
-
 #OpenCV Labrary which is debug version build1
 #set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build1)
 #set(OpenCV_DIR /home/jie/third_party/opencv-3.4.0/build3)
 find_package(OpenCV REQUIRED)
+
+option (BUILD_GLSL_SiftGPU "build GLSL SiftGPU" ON)
 
 include_directories(${OpenCV_INCLUDE_DIRS})
 include_directories(${CUDA_INCLUDE_DIRS})
 
 add_subdirectory(sift)
 add_subdirectory(cuda)
+
+if(BUILD_GLSL_SiftGPU)
 add_subdirectory(SiftGPU)
+endif(BUILD_GLSL_SiftGPU)
 
 #SET(CMAKE_BUILD_TYPE "Debug")
 #SET(CMAKE_CXX_FLAGS "-pg")
@@ -78,8 +82,9 @@ if (BUILD_TEST)
   add_executable(test_cv_descriptor test_cv_descriptor.cpp)
   target_link_libraries(test_cv_descriptor ${LABRARY})
 
-  add_executable(test_cv_homography test_cv_homography.cpp)
-  target_link_libraries(test_cv_homography ${LABRARY} siftgpu)
-
 endif (BUILD_TEST)
 
+if (BUILD_TEST AND BUILD_GLSL_SiftGPU)
+add_executable(test_cv_homography test_cv_homography.cpp)
+target_link_libraries(test_cv_homography ${LABRARY} siftgpu)
+endif(BUILD_TEST AND BUILD_GLSL_SiftGPU)

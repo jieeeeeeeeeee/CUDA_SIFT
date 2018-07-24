@@ -142,6 +142,7 @@ __device__ int temsize;
 __constant__ int d_oIndex[36];
 
 static const int BLOCK_SIZE_ONE_DIM = 32;
+static const int Descript_BLOCK_SIZE = 32;
 
 __global__ void test_gpu(int pitch,int height)
 {
@@ -1754,12 +1755,12 @@ __global__ void calcSIFTDescriptor_gpu(float *d_point,int p_pitch,float* d_decri
     //len 为特征点邻域区域内像素的数量，histlen 为直方图的数量，即特征矢量的长度，实际应为d×d×n，之所以每个变量
     //又加上了2，是因为要为圆周循环留出一定的内存空间
     int i, j, k, len = (radius*2+1)*(radius*2+1);
-    //__shared__ float dst1[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS*BLOCK_SIZE_ONE_DIM];
+    //__shared__ float dst1[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS*Descript_BLOCK_SIZE];
     //float dst[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS];
     int rows = height, cols = width;
 
     const int histlen1 = (SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS);
-    __shared__ float hist[(SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS)*BLOCK_SIZE_ONE_DIM];
+    __shared__ float hist[(SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS)*Descript_BLOCK_SIZE];
     float* hist1 = hist+threadIdx.x*d*d*n;
     //init *hist = {0},because following code will use '+='
     for( i = 0; i < d; i++ )
@@ -1977,12 +1978,12 @@ __global__ void calcSIFTDescriptor_gpu_shared_(float *d_point,int p_pitch,float*
     //len 为特征点邻域区域内像素的数量，histlen 为直方图的数量，即特征矢量的长度，实际应为d×d×n，之所以每个变量
     //又加上了2，是因为要为圆周循环留出一定的内存空间
     int i, j, k, len = (radius*2+1)*(radius*2+1);
-    //__shared__ float dst1[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS*BLOCK_SIZE_ONE_DIM];
+    //__shared__ float dst1[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS*Descript_BLOCK_SIZE];
     //float dst[SIFT_DESCR_WIDTH*SIFT_DESCR_WIDTH*SIFT_DESCR_HIST_BINS];
     int rows = height, cols = width;
 
     const int histlen1 = (SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS);
-    __shared__ float hist[(SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS)*BLOCK_SIZE_ONE_DIM];
+    __shared__ float hist[(SIFT_DESCR_WIDTH)*(SIFT_DESCR_WIDTH)*(SIFT_DESCR_HIST_BINS)*Descript_BLOCK_SIZE];
     float* hist1 = hist+threadIdx.x*d*d*n;
     //float4 layer0[32];
 
