@@ -6,7 +6,7 @@ find_package(GLEW REQUIRED)
 
 SET(SIFTGPU_ENABLE_SERVER FALSE)
 SET(SIFTGPU_ENABLE_OPENCL FALSE)
-SET(SIFTGPU_ENABLE_CUDA FALSE)
+SET(SIFTGPU_ENABLE_CUDA TRUE)
 SET(SIFTGPU_ENABLE_SSE TRUE)
 SET(SIFTGPU_SSE_OPTIONS -march=core2 -mfpmath=sse)
 SET(SIFTGPU_PREFER_GLUT TRUE)
@@ -44,10 +44,25 @@ message(STATUS ${GLEW_LIBRARIES})
 	SET (GLEW_LIBRARIES GLEW)
 endif (GLEW_FOUND)
 
-ADD_LIBRARY(siftgpu STATIC FrameBufferObject.cpp GlobalUtil.cpp GLTexImage.cpp ProgramGLSL.cpp 
+
+if( SIFTGPU_ENABLE_CUDA )
+    ADD_DEFINITIONS(-DCUDA_SIFTGPU_ENABLED)
+    cuda_add_library(siftgpu STATIC FrameBufferObject.cpp GlobalUtil.cpp GLTexImage.cpp ProgramGLSL.cpp
+                ProgramGPU.cpp ShaderMan.cpp SiftGPU.cpp SiftPyramid.cpp PyramidGL.cpp SiftMatch.cpp
+                CuTexImage.cpp PyramidCU.cpp SiftMatchCU.cpp ProgramCU.cu)
+
+    TARGET_LINK_LIBRARIES(siftgpu ${LIBS_SIFTGPU} ${GLEW_LIBRARIES} ${GLUT_LIBRARIES} ${OPENGL_LIBRARIES} )
+
+else ( SIFTGPU_ENABLE_CUDA )
+    ADD_LIBRARY(siftgpu STATIC FrameBufferObject.cpp GlobalUtil.cpp GLTexImage.cpp ProgramGLSL.cpp
             ProgramGPU.cpp ShaderMan.cpp SiftGPU.cpp SiftPyramid.cpp PyramidGL.cpp SiftMatch.cpp)
 
-TARGET_LINK_LIBRARIES(siftgpu ${LIBS_SIFTGPU} ${GLEW_LIBRARIES} ${GLUT_LIBRARIES} ${OPENGL_LIBRARIES} )
+    TARGET_LINK_LIBRARIES(siftgpu ${LIBS_SIFTGPU} ${GLEW_LIBRARIES} ${GLUT_LIBRARIES} ${OPENGL_LIBRARIES} )
+endif ( SIFTGPU_ENABLE_CUDA )
+
+
+
+
 
 INSTALL(FILES SiftGPU.h DESTINATION include)
 INSTALL(TARGETS siftgpu DESTINATION lib )

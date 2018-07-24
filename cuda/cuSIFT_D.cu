@@ -353,7 +353,7 @@ __device__ void unpackOctave(float& fx,float& fy,float& oct_lay1,int& x,int& y,i
     y = round(fy/(1<<octave));
 }
 
-__global__ void calcOrientationHist_gpu(float *d_point,int p_pitch,float* temdata,const int buffSize,const int pointsNum,const int maxNum,const int nOctaveLayers)
+__global__ void calcOrientationHist_gpu_bk(float *d_point,int p_pitch,float* temdata,const int buffSize,const int pointsNum,const int maxNum,const int nOctaveLayers)
 {
     //int x = blockIdx.x*blockDim.x+threadIdx.x;
     int pointIndex = blockIdx.x*blockDim.x+threadIdx.x;
@@ -419,6 +419,174 @@ __global__ void calcOrientationHist_gpu(float *d_point,int p_pitch,float* temdat
     //the forth is gauss weight(len+2)
     //the temphist is(n + 2).
     float *X = buf, *Y = X + len, *Mag = X, *Ori = Y + len, *W = Ori + len;
+    //gradient direction histogarm
+    float* temphist = hists + 2;
+    float* hist = temphist + 2+n;
+
+    for( int i = 0; i < n; i++ )
+        temphist[i] = 0.f;
+
+//    if(radius > 16)
+//        printf("radius: %d, point index : %d\n",radius,pointIndex);
+
+    for( int i = -radius, k = 0; i <= radius; i++ )
+    {
+        int yi = y + i;
+        // '=' avoid out of memory for i-1,j-1 following
+        if( yi <= 0 || yi >= height - 1 )
+            continue;
+        for( int j = -radius; j <= radius; j++ )
+        {
+            int xi = x + j;
+            if( xi <= 0 || xi >= width - 1 )
+                continue;
+
+            float dx = (float)(currptr[i*pitch+j+1] - currptr[i*pitch+j-1]);
+            //the positive direction is from bottom to top contrary to the image /
+            //from top to bottom.So dy = y-1 - (y+1).
+            float dy = (float)(currptr[(i-1)*pitch+j] - currptr[(i+1)*pitch+j]);
+
+            //X[k] = dx;
+            //Y[k] = dy;
+            //Wight not multiply 1/pi,because the compute of oritentation
+            //only need the relative wight.
+            float wk,ok,mk;
+//            W[k] = __expf((i*i + j*j)*expf_scale);
+//            Ori[k] = atan2f(dy,dx);
+//            Mag[k] = sqrtf(dy*dy+dx*dx);
+            wk = __expf((i*i + j*j)*expf_scale);
+            ok = atan2f(dy,dx);
+            mk = sqrtf(dy*dy+dx*dx);
+            //cvRound((ori/pi+180)/360*36)
+            float tembin = __fdividef(__fdividef(ok*180,CV_PI),360/n);
+            int bin = tembin > 0 ? tembin + 0.5:tembin - 0.5;
+            if( bin >= n )
+                bin -= n;
+            if( bin < 0 )
+                bin += n;
+            temphist[bin] += wk*mk;
+            k++;
+        }
+    }
+
+    temphist[-1] = temphist[n-1];
+    temphist[-2] = temphist[n-2];
+    temphist[n] = temphist[0];
+    temphist[n+1] = temphist[1];
+
+    for(int i = 0; i < n; i++ )
+    {
+        hist[i] = (temphist[i-2] + temphist[i+2])*(1.f/16.f) +
+            (temphist[i-1] + temphist[i+1])*(4.f/16.f) +
+            temphist[i]*(6.f/16.f);
+    }
+
+    omax = hist[0];
+    for( int i = 1; i < n; i++ )
+        omax = fmaxf(omax, hist[i]);
+    //printf("omax : %f \n",omax);
+
+    float mag_thr = (float)(omax * SIFT_ORI_PEAK_RATIO);
+
+    for( int j = 0; j < n; j++ )
+    {
+        int l = j > 0 ? j - 1 : n - 1;
+        int r2 = j < n-1 ? j + 1 : 0;
+
+        if( hist[j] > hist[l]  &&  hist[j] > hist[r2]  &&  hist[j] >= mag_thr )
+        {
+            float bin = j + 0.5f * (hist[l]-hist[r2]) / (hist[l] - 2*hist[j] + hist[r2]);
+            bin = bin < 0 ? n + bin : bin >= n ? bin - n : bin;
+
+            if(hist[j] == omax)
+                d_point[pointIndex+p_pitch*5] = 360.f - (float)((360.f/n) * bin);
+            else{
+                //addpoint;
+                unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
+                idx = (idx>maxNum ? maxNum-1 : idx);
+                d_point[idx]   = s_point[threadIdx.x*KEYPOINTS_SIZE];
+                d_point[idx+p_pitch*1] = s_point[threadIdx.x*KEYPOINTS_SIZE+1];
+                d_point[idx+p_pitch*2] = s_point[threadIdx.x*KEYPOINTS_SIZE+2];
+                d_point[idx+p_pitch*3] = s_point[threadIdx.x*KEYPOINTS_SIZE+3];
+                d_point[idx+p_pitch*4] = s_point[threadIdx.x*KEYPOINTS_SIZE+4];
+                d_point[idx+p_pitch*5] = 360.f - (float)((360.f/n) * bin);
+//                d_point[idx+p_pitch*6] = s_point[threadIdx.x*KEYPOINTS_SIZE+6];
+//                d_point[idx+p_pitch*7] = s_point[threadIdx.x*KEYPOINTS_SIZE+7];
+//                d_point[idx+p_pitch*8] = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
+                //printf("%f ",360.f - (float)((360.f/n) * bin));
+            }
+        }
+    }
+
+    delete []hists;
+}
+
+__global__ void calcOrientationHist_gpu(float *d_point,int p_pitch,float* temdata,const int buffSize,const int pointsNum,const int maxNum,const int nOctaveLayers)
+{
+    //int x = blockIdx.x*blockDim.x+threadIdx.x;
+    int pointIndex = blockIdx.x*blockDim.x+threadIdx.x;
+    if(pointIndex>=pointsNum)
+        return;
+
+    __shared__ float s_point[BLOCK_SIZE_ONE_DIM*KEYPOINTS_SIZE];
+    s_point[threadIdx.x*KEYPOINTS_SIZE]   =d_point[pointIndex];
+    s_point[threadIdx.x*KEYPOINTS_SIZE+1] =d_point[pointIndex+p_pitch*1];
+    s_point[threadIdx.x*KEYPOINTS_SIZE+2] =d_point[pointIndex+p_pitch*2];
+    s_point[threadIdx.x*KEYPOINTS_SIZE+3] =d_point[pointIndex+p_pitch*3];
+    s_point[threadIdx.x*KEYPOINTS_SIZE+4] =d_point[pointIndex+p_pitch*4];
+    s_point[threadIdx.x*KEYPOINTS_SIZE+5] =d_point[pointIndex+p_pitch*5];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+6] =d_point[pointIndex+p_pitch*6];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+7] =d_point[pointIndex+p_pitch*7];
+//    s_point[threadIdx.x*KEYPOINTS_SIZE+8] =d_point[pointIndex+p_pitch*8];
+
+    __syncthreads();
+    float size =s_point[threadIdx.x*KEYPOINTS_SIZE+3];
+
+    int x,y,o,layer;
+    unpackOctave(s_point[threadIdx.x*KEYPOINTS_SIZE],
+            s_point[threadIdx.x*KEYPOINTS_SIZE+1],
+            s_point[threadIdx.x*KEYPOINTS_SIZE+2],
+            x,y,o,layer);
+
+//    int s = s_point[threadIdx.x*KEYPOINTS_SIZE+6];
+//    int x = s_point[threadIdx.x*KEYPOINTS_SIZE+7];
+//    int y = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
+//    int o = s/(nOctaveLayers+2);
+//    int layer = s - o*(nOctaveLayers+2);
+
+    int width = d_oIndex[o*3];
+    int height = d_oIndex[o*3+1];
+    int pitch = d_oIndex[o*3+2];
+
+
+    float* currptr;
+    //currptr is the current dog image where the current extrema point in.
+    //x,y,s is the current location in dog images.
+    //Note: s is the absolutely scale location and the 'laryer' is the /
+    //relatively location in the octave which range is 1~3.
+
+    //The orientation is compute in gausspyrmid,so the currptr renew:
+    currptr = pgpyr[o*(nOctaveLayers+3) + layer]+y*pitch+x;
+    //simga*2^s/S,the simga the simga relative to the octave.
+    float scl_octv = size*0.5f/(1 << o);
+    float omax;
+    float sigma_ori = SIFT_ORI_SIG_FCTR * scl_octv;
+    //'+0.5' for rounding because scl_octv>0
+    int radius = SIFT_ORI_RADIUS * scl_octv+0.5,n = SIFT_ORI_HIST_BINS;
+    float* hists = new float[2*n+4];
+
+    //the procress of all point range, a square space.
+    int len = (radius*2+1)*(radius*2+1);
+    //garuss smooth's coefficient
+    float expf_scale = -1.f/(2.f * sigma_ori * sigma_ori);
+    //n = 36
+    //float *buf = temdata+pointIndex*buffSize;
+    //float *buf = (float *)malloc((len*4 + n+4 + n)*sizeof(float));
+    //the buf is a memory storage the temporary data.
+    //The frist len is the Mag('fu zhi')and X,second len is the Y,third len is the Ori,
+    //the forth is gauss weight(len+2)
+    //the temphist is(n + 2).
+    //float *X = buf, *Y = X + len, *Mag = X, *Ori = Y + len, *W = Ori + len;
     //gradient direction histogarm
     float* temphist = hists + 2;
     float* hist = temphist + 2+n;

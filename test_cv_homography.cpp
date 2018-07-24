@@ -216,7 +216,7 @@ int main(int argc, char* argv[])
     /// SIFT_GPU
     /////////////////////
     SiftGPU sift;
-    char * argv1[] = {"-fo", "0",  "-v", "0","-maxd","20000"};//
+    char * argv1[] = {"-fo", "0",  "-v", "0","-maxd","20000","-cuda","0"};//
     int argc1 = sizeof(argv1)/sizeof(char*);
     sift.ParseParam(argc1, argv1);
     if(sift.CreateContextGL() != SiftGPU::SIFTGPU_FULL_SUPPORTED)
