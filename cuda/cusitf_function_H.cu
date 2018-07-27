@@ -1,5 +1,5 @@
 #include "cusitf_function_H.h"
-
+using namespace cv;
 
 #define MESSAGE 1
 

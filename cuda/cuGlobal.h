@@ -17,7 +17,7 @@
 #define safeThreadSync()    __safeThreadSync(__FILE__, __LINE__)
 #define checkMsg(msg)       __checkMsg(msg, __FILE__, __LINE__)
 
-using namespace cv;
+//using namespace cv;
 
 
 

@@ -292,10 +292,11 @@ void siftdect(cv::Mat& src,std::vector<cv::KeyPoint>& keypoints,cv::Mat& descrip
 
 }
 #define TIME
+using namespace cv;
 int main()
 {
     cv::cuda::GpuMat src_gpu;
-    src_gpu.upload(cv::imread("../data/100_7101.JPG",cv::IMREAD_GRAYSCALE));
+    src_gpu.upload(cv::imread("/home/jie/workspace/data/Features_Repeatability/vgg_oxford_feat_eval/ubc/img1.ppm",cv::IMREAD_GRAYSCALE));
     ///////////////////////////////
     /// old cuda sift
     ///////////////////////////////
@@ -348,6 +349,7 @@ int main()
 
     std::vector<cv::KeyPoint>keypointss;
     sift.downloadKeypoints(keypointsGPU, keypointss);
+    std::cout<<"cusift keypoints num: "<<keypointss.size()<<std::endl;
 //    Mat keypointsCPU(keypointsGPU);
 //    float* h_keypoints = (float*)keypointsCPU.ptr();
 

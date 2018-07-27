@@ -298,7 +298,7 @@ __global__ void findScaleSpaceExtrema_gpu(float *d_point,int p_pitch,int s, int 
 
         //addpoint;
         unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
-        idx = (idx>maxNum ? maxNum-1 : idx);
+        idx = (idx>=maxNum ? maxNum-1 : idx);
 //        d_point[idx*KEYPOINTS_SIZE] = (x + Vx)*(1 << o);
 //        d_point[idx*KEYPOINTS_SIZE+1] = (y + Vy)*(1 << o);
 //        d_point[idx*KEYPOINTS_SIZE+2] = o + (s<<8) + ((int)(((Vs + 0.5)*255)+0.5) << 16);
@@ -312,7 +312,9 @@ __global__ void findScaleSpaceExtrema_gpu(float *d_point,int p_pitch,int s, int 
         d_point[idx] = (x + Vx)*(1 << o);
         d_point[idx+p_pitch*1] = (y + Vy)*(1 << o);
         float oct_lay1 =o + (layer<<8) + ((int)(((Vs + 0.5)*255)+0.5) << 16);
-        int oct_lay = oct_lay1;
+//        if(idx == 0)
+//            printf("o = %d ,Vs = %f ,oct_lay1 = %f ,x = %f , y = %f\n",o,Vs,oct_lay1,d_point[idx],d_point[idx+p_pitch*1]);
+        //int oct_lay = oct_lay1;
         d_point[idx+p_pitch*2] = oct_lay1;
         float size = 1.6*__powf(2.f, (layer + Vs) / nOctaveLayers)*(1 << o)*2;
         d_point[idx+p_pitch*3] = size;
@@ -333,13 +335,13 @@ __global__ void findScaleSpaceExtrema_gpu(float *d_point,int p_pitch,int s, int 
 //            printf("%d,%d,%d\n",x,y,s);
         //printf("%f \n",pd[0][100*2304+100]);
 
-        float scl_octv = size*0.5f/(1 << o);
-        //'+0.5' for rounding because scl_octv>0
-        int radius = SIFT_ORI_RADIUS * scl_octv+0.5;
-        //the procress of all point range, a square space.
-        int len = (radius*2+1)*(radius*2+1);
-        //int temBuffSize = len*4+2*SIFT_ORI_HIST_BINS+2;
-        atomicMax(&temsize,len);
+//        float scl_octv = size*0.5f/(1 << o);
+//        //'+0.5' for rounding because scl_octv>0
+//        int radius = SIFT_ORI_RADIUS * scl_octv+0.5;
+//        //the procress of all point range, a square space.
+//        int len = (radius*2+1)*(radius*2+1);
+//        //int temBuffSize = len*4+2*SIFT_ORI_HIST_BINS+2;
+//        atomicMax(&temsize,len);
     }
 }
 
@@ -347,6 +349,8 @@ __device__ void unpackOctave(float& fx,float& fy,float& oct_lay1,int& x,int& y,i
 {
     int oct_lay = oct_lay1;
     octave = oct_lay & 255;
+    //if(oct_lay1 < 580.67 && oct_lay1 > 580.66)
+        //printf("asdasd = %d\n",octave);
     layer = (oct_lay >> 8) & 255;
     octave = octave < 128 ? octave : (-128 | octave);
     x = round(fx/(1<<octave));
@@ -535,11 +539,9 @@ __global__ void calcOrientationHist_gpu(float *d_point,int p_pitch,float* temdat
     s_point[threadIdx.x*KEYPOINTS_SIZE+3] =d_point[pointIndex+p_pitch*3];
     s_point[threadIdx.x*KEYPOINTS_SIZE+4] =d_point[pointIndex+p_pitch*4];
     s_point[threadIdx.x*KEYPOINTS_SIZE+5] =d_point[pointIndex+p_pitch*5];
-//    s_point[threadIdx.x*KEYPOINTS_SIZE+6] =d_point[pointIndex+p_pitch*6];
-//    s_point[threadIdx.x*KEYPOINTS_SIZE+7] =d_point[pointIndex+p_pitch*7];
-//    s_point[threadIdx.x*KEYPOINTS_SIZE+8] =d_point[pointIndex+p_pitch*8];
 
     __syncthreads();
+
     float size =s_point[threadIdx.x*KEYPOINTS_SIZE+3];
 
     int x,y,o,layer;
@@ -547,12 +549,6 @@ __global__ void calcOrientationHist_gpu(float *d_point,int p_pitch,float* temdat
             s_point[threadIdx.x*KEYPOINTS_SIZE+1],
             s_point[threadIdx.x*KEYPOINTS_SIZE+2],
             x,y,o,layer);
-
-//    int s = s_point[threadIdx.x*KEYPOINTS_SIZE+6];
-//    int x = s_point[threadIdx.x*KEYPOINTS_SIZE+7];
-//    int y = s_point[threadIdx.x*KEYPOINTS_SIZE+8];
-//    int o = s/(nOctaveLayers+2);
-//    int layer = s - o*(nOctaveLayers+2);
 
     int width = d_oIndex[o*3];
     int height = d_oIndex[o*3+1];
@@ -671,7 +667,7 @@ __global__ void calcOrientationHist_gpu(float *d_point,int p_pitch,float* temdat
             else{
                 //addpoint;
                 unsigned int idx = atomicInc(d_PointCounter, 0x7fffffff);
-                idx = (idx>maxNum ? maxNum-1 : idx);
+                idx = (idx>=maxNum ? maxNum-1 : idx);
                 d_point[idx]   = s_point[threadIdx.x*KEYPOINTS_SIZE];
                 d_point[idx+p_pitch*1] = s_point[threadIdx.x*KEYPOINTS_SIZE+1];
                 d_point[idx+p_pitch*2] = s_point[threadIdx.x*KEYPOINTS_SIZE+2];

@@ -270,6 +270,25 @@ void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpy
     CV_CUDEV_SAFE_CALL( cudaDeviceSynchronize() );
     //cudaFree(temData);
 
+
+//    safeCall(cudaMemcpyFromSymbol(&temDataSize, temsize, sizeof(int)));
+//    //4 is the 4 len buf
+//    int buffSize = temDataSize*4;
+//    safeCall(cudaMalloc(&temData,sizeof(float)*featureNum*buffSize));
+//    //std::cout<<"buffSize:"<<buffSize<<std::endl;
+
+//    int grid =iDivUp(featureNum,BLOCK_SIZE_ONE_DIM);
+//    //use the global memory
+//    //calcOrientationHist_gpu<<<grid,BLOCK_SIZE_ONE_DIM>>>(d_keypoints,temData,buffSize,num0,maxPoints,nOctaveLayers);
+//    calcOrientationHist_gpu<<<grid,BLOCK_SIZE_ONE_DIM>>>((float*)keypoints.ptr(),keypoints.step1(),temData,buffSize,featureNum,maxFeatures,nOctaveLayers);
+//    CV_CUDEV_SAFE_CALL( cudaGetLastError() );
+//    CV_CUDEV_SAFE_CALL( cudaDeviceSynchronize() );
+//    cudaFree(temData);
+
+
+
+
+
     //int num1 = 0;
     //featureNum is after calculate the orientation
     safeCall(cudaMemcpyFromSymbol(&featureNum, d_PointCounter, sizeof(int)));
@@ -516,6 +535,7 @@ namespace cuda {
         contrastThreshold = _contrastThreshold;
         edgeThreshold = _edgeThreshold;
         sigma = _sigma;
+        //this is a limit for keypoints num;
         keypointsRatio = _keypointsRatio;
 
     }

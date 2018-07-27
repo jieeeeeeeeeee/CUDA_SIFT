@@ -6,7 +6,7 @@
 #include "cudaImage.h"
 //#include "cusitf_function_D.h"
 
-using namespace cv;
+//using namespace cv;
 //using namespace cusift;
 
 
@@ -111,7 +111,7 @@ extern "C"
 void computePerOctave(CudaImage& base,std::vector<double> & sig,int nOctaveLayers);
 
 extern "C"
-void createInitialImage(const Mat &src, CudaImage &base, float sigma, bool doubleImageSize);
+void createInitialImage(const cv::Mat &src, CudaImage &base, float sigma, bool doubleImageSize);
 
 extern "C"
 void buildGaussianPyramid(CudaImage& base, std::vector<CudaImage>& pyr, int nOctaves);
@@ -123,7 +123,7 @@ extern "C"
 void buildDoGPyramid(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr );
 
 extern "C"
-void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, std::vector<KeyPoint> &keypoints, cv::Mat& descriptors);
+void findScaleSpaceExtrema(std::vector<CudaImage>& gpyr, std::vector<CudaImage>& dogpyr, std::vector<cv::KeyPoint> &keypoints, cv::Mat& descriptors);
 
 extern "C"
 void testDiffimage(float *d_Octave0,float *d_Octave1,float *d_diffOctave,int pitch,int height);

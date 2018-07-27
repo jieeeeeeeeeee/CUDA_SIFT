@@ -96,8 +96,8 @@ int main(int argc, char* argv[])
     vector<KeyPoint> keypoints1, keypoints2;
 
 
-    char * p1 = "/home/jie/workspace/projects/CUDA_SIfT/Qt_cuda_sift/data/100_7101.JPG";
-    char * p2 = "/home/jie/workspace/projects/CUDA_SIfT/Qt_cuda_sift/data/100_7102.JPG";
+    char * p1 = "/home/jie/workspace/data/Features_Repeatability/vgg_oxford_feat_eval/ubc/img1.ppm";
+    char * p2 = "/home/jie/workspace/data/Features_Repeatability/vgg_oxford_feat_eval/ubc/img2.ppm";
 
     imgR1.upload(imread(p1));
     imgR2.upload(imread(p2));
