@@ -296,7 +296,7 @@ using namespace cv;
 int main()
 {
     cv::cuda::GpuMat src_gpu;
-    src_gpu.upload(cv::imread("/home/jie/workspace/data/Features_Repeatability/vgg_oxford_feat_eval/ubc/img1.ppm",cv::IMREAD_GRAYSCALE));
+    src_gpu.upload(cv::imread("/home/jie/workspace/projects/CUDA_SIfT/Qt_cuda_sift/data/100_7101.JPG",cv::IMREAD_GRAYSCALE));
     ///////////////////////////////
     /// old cuda sift
     ///////////////////////////////

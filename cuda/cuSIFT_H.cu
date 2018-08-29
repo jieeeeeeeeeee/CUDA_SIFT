@@ -228,7 +228,8 @@ void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpy
     int temDataSize = 0;
     safeCall(cudaMemcpyToSymbol(temsize, &temDataSize, sizeof(int)));
 
-
+    //double t, tf = cv::getTickFrequency();
+    //t = (double)getTickCount();
     dim3 Block(32,8);
     int nOctaves = (int)gpyr.size()/(nOctaveLayers + 3);
     for(int o = 0;o<nOctaves;o++){
@@ -240,7 +241,8 @@ void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpy
             CV_CUDEV_SAFE_CALL( cudaDeviceSynchronize() );
         }
     }
-
+    //t = (double)getTickCount() - t;
+    //printf("keypoint detection time: %g\n", t*1000./tf);
 
     safeCall(cudaMemcpyFromSymbol(&featureNum, d_PointCounter, sizeof(int)));
     featureNum = (featureNum>maxFeatures)? maxFeatures:featureNum;
@@ -262,6 +264,8 @@ void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpy
     //safeCall(cudaMalloc(&temData,sizeof(float)*featureNum*buffSize));
     //std::cout<<"buffSize:"<<buffSize<<std::endl;
 
+
+    //t = (double)cv::getTickCount();
     int grid =iDivUp(featureNum,BLOCK_SIZE_ONE_DIM);
     //use the global memory
     //calcOrientationHist_gpu<<<grid,BLOCK_SIZE_ONE_DIM>>>(d_keypoints,temData,buffSize,num0,maxPoints,nOctaveLayers);
@@ -270,6 +274,8 @@ void findScaleSpaceExtrema(std::vector<GpuMat>& gpyr, std::vector<GpuMat>& dogpy
     CV_CUDEV_SAFE_CALL( cudaDeviceSynchronize() );
     //cudaFree(temData);
 
+    //t = (double)cv::getTickCount() - t;
+    //printf("Orientation time: %g\n", t*1000./tf);
 
 //    safeCall(cudaMemcpyFromSymbol(&temDataSize, temsize, sizeof(int)));
 //    //4 is the 4 len buf
@@ -444,15 +450,16 @@ public:
 
         //the number of the Octaves which can calculate by formula "|log2 min(X,Y) - 2|"
         //cvRound Rounds floating-point number to the nearest integer.
-        int nOctaves = actualNOctaves > 0 ? actualNOctaves : cvRound(std::log( (double)std::min( base.cols, base.rows ) ) / std::log(2.) - 2) - firstOctave;
+        int nOctaves = actualNOctaves > 0 ? actualNOctaves : cvRound(std::log( (double)std::min( base.cols, base.rows ) ) / std::log(2.) - 3) - firstOctave;
 
         std::vector<GpuMat> gpyr,dogpyr;
-        //double t, tf = getTickFrequency();
-        //t = (double)getTickCount();
+        //double t, tf = cv::getTickFrequency();
+        //t = (double)cv::getTickCount();
         buildGaussianPyramid(base, gpyr, nOctaves,sift.nOctaveLayers,sift.sigma);
-        //t = (double)getTickCount() - t;
-        //printf("pyramid construction time: %g\n", t*1000./tf);
+
         buildDoGPyramid(gpyr, dogpyr,sift.nOctaveLayers);
+        //t = (double)cv::getTickCount() - t;
+        //printf("pyramid construction time: %g\n", t*1000./tf);
         if( !useProvidedKeypoints )
         {
             //t = (double)getTickCount();
@@ -461,8 +468,8 @@ public:
 
 //            if( nfeatures > 0 )
 //                KeyPointsFilter::retainBest(keypoints, nfeatures);
-//            //t = (double)getTickCount() - t;
-//            //printf("keypoint detection time: %g\n", t*1000./tf);
+            //t = (double)getTickCount() - t;
+            //printf("keypoint detection time: %g\n", t*1000./tf);
 
 
 //            if( firstOctave < 0 )
@@ -495,7 +502,11 @@ public:
 //            //t = (double)getTickCount() - t;
 //            //printf("descriptor extraction time: %g\n", t*1000./tf);
 //        }
+        //t = (double)cv::getTickCount();
         calcDescriptors(keypoints,descriptors,sift.nOctaveLayers);
+        //t = (double)cv::getTickCount() - t;
+        //printf("Descriptors time: %g\n", t*1000./tf);
+
     }
 
 

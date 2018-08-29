@@ -47,11 +47,12 @@ endif (GLEW_FOUND)
 
 if( SIFTGPU_ENABLE_CUDA )
     ADD_DEFINITIONS(-DCUDA_SIFTGPU_ENABLED)
-    cuda_add_library(siftgpu STATIC FrameBufferObject.cpp GlobalUtil.cpp GLTexImage.cpp ProgramGLSL.cpp
+    cuda_add_library(siftgpu SHARED FrameBufferObject.cpp GlobalUtil.cpp GLTexImage.cpp ProgramGLSL.cpp
                 ProgramGPU.cpp ShaderMan.cpp SiftGPU.cpp SiftPyramid.cpp PyramidGL.cpp SiftMatch.cpp
                 CuTexImage.cpp PyramidCU.cpp SiftMatchCU.cpp ProgramCU.cu)
-
-    TARGET_LINK_LIBRARIES(siftgpu ${LIBS_SIFTGPU} ${GLEW_LIBRARIES} ${GLUT_LIBRARIES} ${OPENGL_LIBRARIES} )
+            #message(${CUDA_LIBRARIES})
+    TARGET_LINK_LIBRARIES(siftgpu ${LIBS_SIFTGPU} ${GLEW_LIBRARIES} ${GLUT_LIBRARIES} ${OPENGL_LIBRARIES}
+        ${CUDA_LIBRARIES})
 
 else ( SIFTGPU_ENABLE_CUDA )
     ADD_LIBRARY(siftgpu STATIC FrameBufferObject.cpp GlobalUtil.cpp GLTexImage.cpp ProgramGLSL.cpp

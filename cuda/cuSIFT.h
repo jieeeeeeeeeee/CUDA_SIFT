@@ -104,9 +104,6 @@ public:
     void operator()(const GpuMat& img, const GpuMat& mask, std::vector<KeyPoint>& keypoints, std::vector<float>& descriptors,
         bool useProvidedKeypoints = false);
 
-
-
-
     int nfeatures;
     int nOctaveLayers;
     bool upsample;
